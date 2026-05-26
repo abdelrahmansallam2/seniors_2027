@@ -7,6 +7,7 @@ import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/features/auth/login_email_screen.dart';
 import 'package:seniors_27/features/app_shell/main_app_shell.dart';
 import 'package:seniors_27/main.dart';
+import 'package:seniors_27/shared/widgets/app_logo.dart';
 import 'package:seniors_27/shared/widgets/retro_bottom_nav.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
 
@@ -16,8 +17,17 @@ void main() {
   ) async {
     await tester.pumpWidget(const SeniorsApp());
 
+    expect(find.byType(AppLogo), findsOneWidget);
+    expect(find.text('ONE YEAR,\nA MILLION'), findsNothing);
+    expect(find.text('MEMORIES'), findsNothing);
+    expect(find.text('LOGIN'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.pumpAndSettle();
+
     expect(find.text('ONE YEAR,\nA MILLION'), findsOneWidget);
     expect(find.text('MEMORIES'), findsOneWidget);
+    expect(find.text('LOGIN'), findsOneWidget);
 
     await tester.tap(find.text('LOGIN'));
     await tester.pumpAndSettle();
