@@ -12,6 +12,7 @@ abstract final class AppColors {
   static const green = Color(0xFFDFFFDC);
   static const orange = Color(0xFFFFB98E);
   static const magenta = Color(0xFFF000FF);
+  static const purple = Color(0xFF8B5CF6);
   static const muted = Color(0xFF666666);
   static const gridLine = Color(0xFFDED6C0);
 }
