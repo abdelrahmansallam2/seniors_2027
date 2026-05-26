@@ -151,7 +151,7 @@ void main() {
 
     await tester.tap(tab('SENIORS'));
     await tester.pumpAndSettle();
-    expect(find.text('Senior Directory'), findsOneWidget);
+    expect(find.text('Seniors'), findsOneWidget);
 
     await tester.tap(tab('MEMORY'));
     await tester.pumpAndSettle();

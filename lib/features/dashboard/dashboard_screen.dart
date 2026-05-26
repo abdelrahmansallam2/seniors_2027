@@ -7,10 +7,12 @@ import 'package:seniors_27/features/dashboard/data/mock_announcements.dart';
 import 'package:seniors_27/features/dashboard/models/announcement.dart';
 import 'package:seniors_27/features/dashboard/widgets/announcement_card.dart';
 import 'package:seniors_27/features/dashboard/widgets/challenge_poll_announcement_card.dart';
+import 'package:seniors_27/features/dashboard/widgets/challenge_preview_card.dart';
 import 'package:seniors_27/features/dashboard/widgets/challenges_empty_state.dart';
 import 'package:seniors_27/features/dashboard/widgets/countdown_board_row.dart';
 import 'package:seniors_27/features/dashboard/widgets/dashboard_upload_placeholder.dart';
 import 'package:seniors_27/features/dashboard/widgets/events_empty_state.dart';
+import 'package:seniors_27/shared/widgets/add_memory_sheet.dart';
 import 'package:seniors_27/shared/widgets/app_logo.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
@@ -108,10 +110,7 @@ class _DashboardHeroCard extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.yellow,
-                      border: Border.all(
-                        color: AppColors.ink,
-                        width: 3,
-                      ),
+                      border: Border.all(color: AppColors.ink, width: 3),
                       boxShadow: const [
                         BoxShadow(
                           color: AppColors.ink,
@@ -183,7 +182,7 @@ class _DailyHighlightsSection extends StatelessWidget {
             child: RetroButton(
               label: 'ADD TODAY',
               height: 34,
-              onPressed: () {},
+              onPressed: () => AddMemorySheet.show(context),
               textStyle: const TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w900,
@@ -261,13 +260,13 @@ class _AnnouncementsSection extends StatelessWidget {
             child: announcements.isEmpty
                 ? const _AnnouncementsEmptyState()
                 : Column(
-              children: announcements.map((announcement) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: _buildAnnouncementCard(announcement),
-                );
-              }).toList(),
-            ),
+                    children: announcements.map((announcement) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: _buildAnnouncementCard(announcement),
+                      );
+                    }).toList(),
+                  ),
           ),
           const SizedBox(height: 18),
         ],
@@ -307,18 +306,11 @@ class _AnnouncementsEmptyState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 28),
       decoration: BoxDecoration(
         color: AppColors.paper,
-        border: Border.all(
-          color: AppColors.ink,
-          width: 2,
-        ),
+        border: Border.all(color: AppColors.ink, width: 2),
       ),
       child: const Column(
         children: [
-          Icon(
-            Icons.campaign_outlined,
-            size: 30,
-            color: AppColors.muted,
-          ),
+          Icon(Icons.campaign_outlined, size: 30, color: AppColors.muted),
           SizedBox(height: 10),
           Text(
             'No announcements yet.',
@@ -382,7 +374,8 @@ class _ChallengesPreviewSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const hasChallenges = false;
+    // Backend-ready placeholder list
+    final challenges = [];
 
     return RetroCard(
       padding: EdgeInsets.zero,
@@ -394,12 +387,26 @@ class _ChallengesPreviewSection extends StatelessWidget {
             backgroundColor: AppColors.yellow,
           ),
           const SizedBox(height: 14),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: ChallengesEmptyState(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: challenges.isEmpty
+                ? const ChallengesEmptyState()
+                : Column(
+                    children: [
+                      ...challenges.asMap().entries.map((entry) {
+                        final i = entry.key;
+                        final challenge = entry.value;
+                        return ChallengePreviewCard(
+                          index: i + 1,
+                          title: challenge['title'] ?? '',
+                          votes: challenge['votes'] ?? 0,
+                        );
+                      }),
+                    ],
+                  ),
           ),
-          if (hasChallenges) ...[
-            const SizedBox(height: 10),
+          const SizedBox(height: 10),
+          if (challenges.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
               child: RetroButton(
@@ -412,8 +419,7 @@ class _ChallengesPreviewSection extends StatelessWidget {
                 ),
               ),
             ),
-          ] else
-            const SizedBox(height: 18),
+          if (challenges.isEmpty) const SizedBox(height: 10),
         ],
       ),
     );
@@ -431,26 +437,15 @@ class _AdminBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.paper,
-        border: Border.all(
-          color: AppColors.ink,
-          width: 2,
-        ),
+        border: Border.all(color: AppColors.ink, width: 2),
         boxShadow: const [
-          BoxShadow(
-            color: AppColors.ink,
-            offset: Offset(4, 4),
-            blurRadius: 0,
-          ),
+          BoxShadow(color: AppColors.ink, offset: Offset(4, 4), blurRadius: 0),
         ],
       ),
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.campaign_outlined,
-            size: 16,
-            color: AppColors.ink,
-          ),
+          Icon(Icons.campaign_outlined, size: 16, color: AppColors.ink),
           SizedBox(width: 8),
           Text(
             'Fresh from admin',
