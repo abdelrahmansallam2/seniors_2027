@@ -1,175 +1,234 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:seniors_27/core/constants/app_assets.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
+import 'package:seniors_27/features/memoryboard/mock_memories.dart';
+import 'package:seniors_27/features/memoryboard/memory_model.dart';
+import 'package:seniors_27/shared/widgets/add_memory_sheet.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
-import 'package:seniors_27/shared/widgets/retro_card.dart';
-import 'package:seniors_27/shared/widgets/retro_photo_placeholder.dart';
-import 'package:seniors_27/shared/widgets/retro_section_header.dart';
 import 'package:seniors_27/shared/widgets/retro_sticker.dart';
 
-class MemoryboardScreen extends StatelessWidget {
+class MemoryboardScreen extends StatefulWidget {
   const MemoryboardScreen({super.key});
 
-  static const _memoryColors = [
-    AppColors.paper,
-    AppColors.green,
-    AppColors.cyan,
-    AppColors.yellow,
-    AppColors.pink,
-    AppColors.paper,
-  ];
+  @override
+  State<MemoryboardScreen> createState() => _MemoryboardScreenState();
+}
+
+class _MemoryboardScreenState extends State<MemoryboardScreen> {
+  int _currentPage = 0;
+  static const int _pageSize = 12;
 
   @override
   Widget build(BuildContext context) {
+    final totalPages = (mockMemories.length / _pageSize).ceil();
+    final start = _currentPage * _pageSize;
+    final end = (start + _pageSize).clamp(0, mockMemories.length);
+    final pageMemories = mockMemories.sublist(start, end);
+
     return SingleChildScrollView(
       key: const PageStorageKey('memoryboard_scroll'),
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+      padding: const EdgeInsets.fromLTRB(22, 30, 22, 140),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const RetroSectionHeader(
-            title: 'MEMORYBOARD',
-            backgroundColor: AppColors.cyan,
-          ),
-          const SizedBox(height: 18),
-          const MainPageHeader(
-            title: 'Memoryboard',
-            subtitle: 'Bring your funniest shots and cozy moments.',
-          ),
-          const SizedBox(height: 25),
-          Stack(
+          const Stack(
             clipBehavior: Clip.none,
             children: [
-              RetroCard(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'SHARE YOUR\nMEMORIES',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        height: 1.05,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Add a moment from your senior year.',
-                      style: TextStyle(fontFamily: 'monospace', fontSize: 10),
-                    ),
-                    const SizedBox(height: 15),
-                    RetroButton(
-                      label: 'UPLOAD PHOTO',
-                      height: 42,
-                      backgroundColor: AppColors.green,
-                      onPressed: () {},
-                      textStyle: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
+              MainPageHeader(
+                title: 'Memoryboard',
+                subtitle: 'Find your funniest shots and cozy moments.',
               ),
-              const Positioned(
-                bottom: -15,
-                right: -10,
+              Positioned(
+                top: 2,
+                right: 4,
                 child: RetroSticker(
-                  color: AppColors.yellow,
-                  width: 60,
-                  height: 22,
-                  angle: 0.1,
+                  color: AppColors.magenta,
+                  width: 58,
+                  height: 20,
+                  angle: 0.12,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 30),
-          const RetroSectionHeader(
-            title: 'RETRO PHOTO WALL',
-            backgroundColor: AppColors.yellow,
-          ),
-          const SizedBox(height: 15),
-          RetroCard(
-            backgroundColor: AppColors.paper,
-            padding: const EdgeInsets.all(16),
-            child: GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _memoryColors.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 20,
-                childAspectRatio: 0.85,
+          const SizedBox(height: 20),
+          SizedBox(
+            width: 140,
+            child: RetroButton(
+              label: 'ADD MEMORY',
+              height: 38,
+              backgroundColor: AppColors.green,
+              onPressed: () => AddMemorySheet.show(context),
+              textStyle: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
               ),
-              itemBuilder: (context, index) {
-                final rotation = (index % 2 == 0 ? -2.0 : 2.0) * math.pi / 180;
-                return Transform.rotate(
-                  angle: rotation,
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: RetroPhotoPlaceholder(
-                          label: 'MEMORY',
-                          height: double.infinity,
-                          backgroundColor: _memoryColors[index],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        color: AppColors.ink,
-                        child: const Text(
-                          'JAN 2027',
-                          style: TextStyle(
-                            color: AppColors.paper,
-                            fontFamily: 'monospace',
-                            fontSize: 8,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
             ),
           ),
           const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: RetroButton(
-                  label: 'PREV.',
-                  height: 42,
-                  onPressed: () {},
-                  textStyle: const TextStyle(
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEB5E3D),
+              image: const DecorationImage(
+                image: AssetImage(AppAssets.memoryboardBoardTexture),
+                fit: BoxFit.cover,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.ink, width: 1.2),
+              boxShadow: const [
+                BoxShadow(
+                  color: AppColors.ink,
+                  offset: Offset(5, 5),
+                  blurRadius: 0,
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 24),
+              child: GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: pageMemories.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 14,
+                  childAspectRatio: 0.72,
+                ),
+                itemBuilder: (context, index) {
+                  // Randomized rotation for scrapbook feel
+                  final rotation =
+                      (index % 2 == 0 ? -1.5 : 1.5) * math.pi / 180;
+                  return _PolaroidCard(
+                    memory: pageMemories[index],
+                    rotation: rotation,
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 28),
+          if (totalPages > 1)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 85,
+                  child: RetroButton(
+                    label: 'PREV.',
+                    height: 34,
+                    shadowOffset: const Offset(3, 4),
+                    onPressed: _currentPage > 0
+                        ? () => setState(() => _currentPage--)
+                        : null,
+                    textStyle: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Text(
+                  '${_currentPage + 1} / $totalPages',
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
                     fontSize: 12,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: RetroButton(
-                  label: 'NEXT',
-                  height: 42,
-                  onPressed: () {},
-                  textStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
+                const SizedBox(width: 16),
+                SizedBox(
+                  width: 85,
+                  child: RetroButton(
+                    label: 'NEXT',
+                    height: 34,
+                    shadowOffset: const Offset(3, 4),
+                    onPressed: _currentPage < totalPages - 1
+                        ? () => setState(() => _currentPage++)
+                        : null,
+                    textStyle: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PolaroidCard extends StatelessWidget {
+  const _PolaroidCard({required this.memory, required this.rotation});
+
+  final Memory memory;
+  final double rotation;
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.rotate(
+      angle: rotation,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Photo/Placeholder behind the frame
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 6, 6, 22),
+              child: Container(
+                decoration: BoxDecoration(color: _getPastelColor(memory.id)),
               ),
-            ],
+            ),
+          ),
+          // Polaroid Frame Asset
+          Image.asset(AppAssets.polaroidFrame, fit: BoxFit.fill),
+          // Name and Date at bottom
+          Positioned(
+            bottom: 8,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  memory.name,
+                  style: const TextStyle(
+                    fontSize: 6,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
+                    height: 1,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  memory.date,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
+                    height: 1,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
+  }
+
+  Color _getPastelColor(String id) {
+    final colors = [
+      AppColors.cyan,
+      AppColors.green,
+      AppColors.pink,
+      AppColors.yellowWarm,
+      AppColors.paper,
+    ];
+    final index = id.hashCode % colors.length;
+    return colors[index];
   }
 }

@@ -4,10 +4,7 @@ import 'package:seniors_27/features/dashboard/models/announcement.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
 
 class AnnouncementCard extends StatelessWidget {
-  const AnnouncementCard({
-    required this.announcement,
-    super.key,
-  });
+  const AnnouncementCard({required this.announcement, super.key});
 
   final Announcement announcement;
 

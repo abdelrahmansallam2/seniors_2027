@@ -123,14 +123,13 @@ class ChallengePollAnnouncementCard extends StatelessWidget {
           ],
 
           // Poll Options
-          if (announcement.options != null)
-            ...announcement.options!.map(
-              (option) => _PollOptionRow(
-                option: option,
-                onTap: () => onOptionTap?.call(option.id),
-                onWhoVotedTap: () => onWhoVotedTap?.call(option.id),
-              ),
+          ...announcement.options.map(
+            (option) => _PollOptionRow(
+              option: option,
+              onTap: () => onOptionTap?.call(option.id),
+              onWhoVotedTap: () => onWhoVotedTap?.call(option.id),
             ),
+          ),
 
           const SizedBox(height: 12),
 
