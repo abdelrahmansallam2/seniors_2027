@@ -1,20 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
+import 'package:seniors_27/features/dashboard/models/announcement.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
 
 class AnnouncementCard extends StatelessWidget {
   const AnnouncementCard({
-    required this.title,
-    required this.content,
-    required this.date,
-    this.isSpotlight = false,
+    required this.announcement,
     super.key,
   });
 
-  final String title;
-  final String content;
-  final String date;
-  final bool isSpotlight;
+  final Announcement announcement;
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +21,7 @@ class AnnouncementCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              if (isSpotlight)
+              if (announcement.isSpotlight)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -42,7 +37,7 @@ class AnnouncementCard extends StatelessWidget {
                   ),
                 ),
               Text(
-                date,
+                announcement.date,
                 style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 8,
@@ -54,7 +49,7 @@ class AnnouncementCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            title,
+            announcement.title,
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w900,
@@ -63,7 +58,7 @@ class AnnouncementCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            content,
+            announcement.description,
             style: const TextStyle(
               fontFamily: 'monospace',
               fontSize: 10,

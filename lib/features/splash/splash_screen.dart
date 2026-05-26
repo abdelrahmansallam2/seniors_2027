@@ -19,10 +19,15 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
-  late final AnimationController _contentController;
-  late final Animation<double> _logoOpacity;
-  late final Animation<double> _logoScale;
-  late final Animation<double> _logoTurn;
+  late final AnimationController _logoStageController;
+  late final AnimationController _memoryController;
+  late final Animation<double> _openingLogoOpacity;
+  late final Animation<double> _openingLogoScale;
+  late final Animation<double> _openingLogoTurn;
+  late final Animation<double> _openingStickerScale;
+  late final Animation<double> _memoryLogoOpacity;
+  late final Animation<double> _memoryLogoScale;
+  late final Animation<double> _memoryLogoTurn;
   late final Animation<double> _titleOpacity;
   late final Animation<Offset> _titleSlide;
   late final Animation<double> _buttonOpacity;
@@ -30,62 +35,81 @@ class _SplashScreenState extends State<SplashScreen>
   late final Animation<double> _buttonScale;
   late final Animation<double> _topStickerScale;
   late final Animation<double> _bottomStickerScale;
+  bool _showMemoryStage = false;
 
   @override
   void initState() {
     super.initState();
-    _contentController = AnimationController(
+    _logoStageController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    _openingLogoOpacity = CurvedAnimation(
+      parent: _logoStageController,
+      curve: const Interval(0, 0.2, curve: Curves.easeOut),
+    );
+    _openingLogoScale = _logoPopScale(_logoStageController);
+    _openingLogoTurn = _logoTurnAnimation(_logoStageController);
+    _openingStickerScale = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _logoStageController,
+        curve: const Interval(0.2, 0.45, curve: Curves.easeOutBack),
+      ),
+    );
+    _logoStageController.addStatusListener(_onLogoStageStatus);
+
+    _memoryController = AnimationController(
       duration: const Duration(milliseconds: 1150),
       vsync: this,
     );
-    _logoOpacity = CurvedAnimation(
-      parent: _contentController,
+    _memoryLogoOpacity = CurvedAnimation(
+      parent: _memoryController,
       curve: const Interval(0, 0.24, curve: Curves.easeOut),
     );
-    _logoScale = _logoPopScale(_contentController);
-    _logoTurn = _logoTurnAnimation(_contentController);
+    _memoryLogoScale = _logoPopScale(_memoryController);
+    _memoryLogoTurn = _logoTurnAnimation(_memoryController);
     _titleOpacity = CurvedAnimation(
-      parent: _contentController,
+      parent: _memoryController,
       curve: const Interval(0.18, 0.62, curve: Curves.easeOut),
     );
     _titleSlide = Tween<Offset>(begin: const Offset(0, 0.16), end: Offset.zero)
         .animate(
           CurvedAnimation(
-            parent: _contentController,
+            parent: _memoryController,
             curve: const Interval(0.18, 0.62, curve: Curves.easeOutCubic),
           ),
         );
     _buttonOpacity = CurvedAnimation(
-      parent: _contentController,
+      parent: _memoryController,
       curve: const Interval(0.55, 0.82, curve: Curves.easeOut),
     );
     _buttonSlide = Tween<Offset>(begin: const Offset(0, 0.18), end: Offset.zero)
         .animate(
           CurvedAnimation(
-            parent: _contentController,
+            parent: _memoryController,
             curve: const Interval(0.55, 0.92, curve: Curves.easeOutCubic),
           ),
         );
     _buttonScale = Tween<double>(begin: 0.94, end: 1).animate(
       CurvedAnimation(
-        parent: _contentController,
+        parent: _memoryController,
         curve: const Interval(0.55, 0.96, curve: Curves.easeOutBack),
       ),
     );
     _topStickerScale = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
-        parent: _contentController,
+        parent: _memoryController,
         curve: const Interval(0.16, 0.42, curve: Curves.easeOutBack),
       ),
     );
     _bottomStickerScale = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
-        parent: _contentController,
+        parent: _memoryController,
         curve: const Interval(0.4, 0.68, curve: Curves.easeOutBack),
       ),
     );
 
-    _contentController.forward();
+    _logoStageController.forward();
   }
 
   Animation<double> _logoPopScale(AnimationController controller) {
@@ -118,29 +142,120 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 
+  void _onLogoStageStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed || !mounted) {
+      return;
+    }
+
+    setState(() => _showMemoryStage = true);
+    _memoryController.forward();
+  }
+
   @override
   void dispose() {
-    _contentController.dispose();
+    _logoStageController
+      ..removeStatusListener(_onLogoStageStatus)
+      ..dispose();
+    _memoryController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(body: RetroGridBackground(child: _buildContent(context)));
+    return Scaffold(
+      body: RetroGridBackground(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 440),
+          reverseDuration: const Duration(milliseconds: 360),
+          transitionBuilder: (child, animation) {
+            final curvedAnimation = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            );
+            return FadeTransition(
+              opacity: curvedAnimation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.025),
+                  end: Offset.zero,
+                ).animate(curvedAnimation),
+                child: ScaleTransition(
+                  scale: Tween<double>(
+                    begin: 0.985,
+                    end: 1,
+                  ).animate(curvedAnimation),
+                  child: child,
+                ),
+              ),
+            );
+          },
+          child: _showMemoryStage
+              ? _buildMemoryContent(context)
+              : _buildLogoStage(),
+        ),
+      ),
+    );
   }
 
-  Widget _buildContent(BuildContext context) {
+  Widget _buildLogoStage() {
     return Stack(
-      key: const ValueKey('splash_content'),
+      key: const ValueKey('logo_splash_stage'),
+      children: [
+        Positioned(
+          top: 94,
+          right: 23,
+          child: ScaleTransition(
+            scale: _openingStickerScale,
+            child: const RetroSticker(
+              color: AppColors.pink,
+              angle: 10 * math.pi / 180,
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 56,
+          left: 70,
+          child: ScaleTransition(
+            scale: _openingStickerScale,
+            child: const RetroSticker(
+              color: AppColors.cyan,
+              width: 51,
+              height: 22,
+              angle: -10 * math.pi / 180,
+            ),
+          ),
+        ),
+        Center(
+          child: FadeTransition(
+            opacity: _openingLogoOpacity,
+            child: RotationTransition(
+              turns: _openingLogoTurn,
+              child: ScaleTransition(
+                scale: _openingLogoScale,
+                child: const AppLogo(size: 184),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMemoryContent(BuildContext context) {
+    return Stack(
+      key: const ValueKey('memory_splash_stage'),
       children: [
         Positioned(
           left: 20,
           top: 15,
           child: FadeTransition(
-            opacity: _logoOpacity,
+            opacity: _memoryLogoOpacity,
             child: RotationTransition(
-              turns: _logoTurn,
-              child: ScaleTransition(scale: _logoScale, child: const AppLogo()),
+              turns: _memoryLogoTurn,
+              child: ScaleTransition(
+                scale: _memoryLogoScale,
+                child: const AppLogo(),
+              ),
             ),
           ),
         ),
