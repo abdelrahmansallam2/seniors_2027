@@ -1,9 +1,13 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:seniors_27/core/api/api_client.dart';
+import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/core/navigation/retro_page_route.dart';
-import 'package:seniors_27/features/auth/login_otp_screen.dart';
+import 'package:seniors_27/features/auth/data/auth_api_service.dart';
+import 'package:seniors_27/features/auth/login_otp_screen.dart'
+    show LoginOtpScreen, OtpVerifier, defaultVerifyOtp;
 import 'package:seniors_27/features/auth/widgets/login_progress.dart';
 import 'package:seniors_27/features/auth/widgets/retro_validation_message.dart';
 import 'package:seniors_27/shared/widgets/app_logo.dart';
@@ -26,14 +30,45 @@ enum EmailAuthStatus {
 typedef EmailOtpRequester = Future<EmailAuthStatus> Function(String email);
 
 Future<EmailAuthStatus> requestOtp(String email) async {
-  await Future<void>.delayed(const Duration(milliseconds: 500));
-  return EmailAuthStatus.otpSent;
+  final api = AuthApiService(ApiClient());
+  try {
+    final response = await api.login(email);
+    final data = response.data;
+    if (data is Map) {
+      return switch (data['status'] as String?) {
+        'otpSent' => EmailAuthStatus.otpSent,
+        'pendingApproval' => EmailAuthStatus.pendingApproval,
+        'deletedOrInactive' => EmailAuthStatus.deletedOrInactive,
+        'rejected' => EmailAuthStatus.rejected,
+        _ => EmailAuthStatus.otpSent,
+      };
+    }
+    return EmailAuthStatus.otpSent;
+  } on ApiException catch (e) {
+    final data = e.data;
+    if (data is Map) {
+      return switch (data['status'] as String?) {
+        'pendingApproval' => EmailAuthStatus.pendingApproval,
+        'deletedOrInactive' => EmailAuthStatus.deletedOrInactive,
+        'rejected' => EmailAuthStatus.rejected,
+        _ => EmailAuthStatus.error,
+      };
+    }
+    return EmailAuthStatus.error;
+  } catch (_) {
+    return EmailAuthStatus.error;
+  }
 }
 
 class LoginEmailScreen extends StatefulWidget {
-  const LoginEmailScreen({this.otpRequester = requestOtp, super.key});
+  const LoginEmailScreen({
+    this.otpRequester = requestOtp,
+    this.otpVerifier,
+    super.key,
+  });
 
   final EmailOtpRequester otpRequester;
+  final OtpVerifier? otpVerifier;
 
   @override
   State<LoginEmailScreen> createState() => _LoginEmailScreenState();
@@ -120,9 +155,14 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
     if (!mounted) {
       return;
     }
-    Navigator.of(
-      context,
-    ).push(RetroPageRoute<void>(builder: (_) => LoginOtpScreen(email: email)));
+    Navigator.of(context).push(
+      RetroPageRoute<void>(
+        builder: (_) => LoginOtpScreen(
+          email: email,
+          verifier: widget.otpVerifier ?? defaultVerifyOtp,
+        ),
+      ),
+    );
   }
 
   @override
