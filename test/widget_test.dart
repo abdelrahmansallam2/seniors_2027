@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/features/auth/login_email_screen.dart';
+import 'package:seniors_27/features/auth/login_gender_screen.dart';
+import 'package:seniors_27/features/auth/login_otp_screen.dart';
+import 'package:seniors_27/features/auth/login_username_screen.dart';
 import 'package:seniors_27/features/app_shell/main_app_shell.dart';
 import 'package:seniors_27/main.dart';
 import 'package:seniors_27/shared/widgets/app_logo.dart';
@@ -12,9 +15,7 @@ import 'package:seniors_27/shared/widgets/retro_bottom_nav.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
 
 void main() {
-  testWidgets('validates and completes the authentication flow', (
-    tester,
-  ) async {
+  testWidgets('splash screen transitions to login screen', (tester) async {
     await tester.pumpWidget(const SeniorsApp());
 
     expect(find.byType(AppLogo), findsOneWidget);
@@ -34,6 +35,22 @@ void main() {
 
     expect(find.text('STEP 1 / 5'), findsOneWidget);
     expect(find.text('EMAIL IS REQUIRED.'), findsNothing);
+  });
+
+  testWidgets('validates and completes the authentication flow', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginEmailScreen(
+          otpRequester: (_) async => EmailAuthStatus.otpSent,
+          otpVerifier: (_, _) async => null,
+        ),
+      ),
+    );
+
+    expect(find.text('STEP 1 / 5'), findsOneWidget);
+    expect(find.text('EMAIL IS REQUIRED.'), findsNothing);
 
     await tester.tap(find.text('SEND OTP'));
     await tester.pumpAndSettle();
@@ -49,12 +66,11 @@ void main() {
     expect(find.text('ENTER A VALID EMAIL ADDRESS.'), findsNothing);
 
     await tester.tap(find.text('SEND OTP'));
-    await tester.pump(const Duration(milliseconds: 510));
+    await tester.pump(const Duration(milliseconds: 260));
     expect(
       find.text('OTP sent successfully. Please check your email.'),
       findsOneWidget,
     );
-    await tester.pump(const Duration(milliseconds: 260));
     await tester.pumpAndSettle();
     expect(find.text('ENTER OTP'), findsOneWidget);
     expect(find.text('STEP 2 / 5'), findsOneWidget);
@@ -74,6 +90,117 @@ void main() {
 
     await tester.tap(find.text('VERIFY'));
     await tester.pumpAndSettle();
+    expect(find.text('Dashboard'), findsOneWidget);
+    expect(find.text('BUILT TO BE'), findsOneWidget);
+    expect(find.text('REMEMBERED'), findsOneWidget);
+  });
+
+  testWidgets('otp screen shows api error on failed verification', (
+    tester,
+  ) async {
+    const errorMessage = 'Invalid OTP code';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginOtpScreen(
+          email: 'senior@example.com',
+          verifier: (_, _) async => errorMessage,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '000000');
+    await tester.tap(find.text('VERIFY'));
+    await tester.pumpAndSettle();
+
+    expect(find.text(errorMessage), findsOneWidget);
+    expect(find.text('Dashboard'), findsNothing);
+  });
+
+  testWidgets('otp screen shows error on verify with empty otp', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(home: const LoginOtpScreen(email: 'senior@example.com')),
+    );
+
+    await tester.tap(find.text('VERIFY'));
+    await tester.pumpAndSettle();
+    expect(find.text('OTP IS REQUIRED.'), findsOneWidget);
+  });
+
+  testWidgets('email approval responses stay on the email step', (
+    tester,
+  ) async {
+    const cases = <EmailAuthStatus, String>{
+      EmailAuthStatus.pendingApproval:
+          'Your request is waiting for admin approval. Please try again after approval.',
+      EmailAuthStatus.deletedOrInactive:
+          'This account request is no longer active. Please contact the admin or submit a new request.',
+      EmailAuthStatus.rejected:
+          'Your request was rejected. Please contact the admin.',
+    };
+
+    for (final entry in cases.entries) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LoginEmailScreen(otpRequester: (_) async => entry.key),
+        ),
+      );
+      await tester.enterText(find.byType(TextField), 'senior@example.com');
+      await tester.tap(find.text('SEND OTP'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(entry.value), findsOneWidget);
+      expect(find.text('ENTER OTP'), findsNothing);
+      expect(
+        find.text(
+          'Approval still pending. Your OTP expired, request a new OTP from Email.',
+        ),
+        findsNothing,
+      );
+    }
+  });
+
+  testWidgets('email request disables repeated submission while loading', (
+    tester,
+  ) async {
+    final completer = Completer<EmailAuthStatus>();
+    var requestCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginEmailScreen(
+          otpRequester: (_) {
+            requestCount++;
+            return completer.future;
+          },
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'senior@example.com');
+    await tester.tap(find.text('SEND OTP'));
+    await tester.pump();
+
+    expect(find.text('SENDING...'), findsOneWidget);
+    await tester.tap(find.text('SENDING...'));
+    await tester.pump();
+    expect(requestCount, 1);
+
+    completer.complete(EmailAuthStatus.pendingApproval);
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Your request is waiting for admin approval. Please try again after approval.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('username screen validates and navigates to gender', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: LoginUsernameScreen()));
+
     expect(find.text('USERNAME'), findsAtLeastNWidgets(1));
     expect(find.text('STEP 3 / 5'), findsOneWidget);
 
@@ -97,6 +224,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('GENDER'), findsOneWidget);
     expect(find.text('STEP 4 / 5'), findsOneWidget);
+    expect(find.text('SELECT A GENDER TO CONTINUE.'), findsNothing);
+  });
+
+  testWidgets('gender screen validates and navigates to home', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: LoginGenderScreen()));
+
+    expect(find.text('GENDER'), findsOneWidget);
     expect(find.text('SELECT A GENDER TO CONTINUE.'), findsNothing);
 
     BoxDecoration optionDecoration(Key key) {
@@ -174,74 +308,6 @@ void main() {
     await tester.tap(tab('PROFILE'));
     await tester.pumpAndSettle();
     expect(find.text('My Profile'), findsOneWidget);
-  });
-
-  testWidgets('email approval responses stay on the email step', (
-    tester,
-  ) async {
-    const cases = <EmailAuthStatus, String>{
-      EmailAuthStatus.pendingApproval:
-          'Your request is waiting for admin approval. Please try again after approval.',
-      EmailAuthStatus.deletedOrInactive:
-          'This account request is no longer active. Please contact the admin or submit a new request.',
-      EmailAuthStatus.rejected:
-          'Your request was rejected. Please contact the admin.',
-    };
-
-    for (final entry in cases.entries) {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: LoginEmailScreen(otpRequester: (_) async => entry.key),
-        ),
-      );
-      await tester.enterText(find.byType(TextField), 'senior@example.com');
-      await tester.tap(find.text('SEND OTP'));
-      await tester.pumpAndSettle();
-
-      expect(find.text(entry.value), findsOneWidget);
-      expect(find.text('ENTER OTP'), findsNothing);
-      expect(
-        find.text(
-          'Approval still pending. Your OTP expired, request a new OTP from Email.',
-        ),
-        findsNothing,
-      );
-    }
-  });
-
-  testWidgets('email request disables repeated submission while loading', (
-    tester,
-  ) async {
-    final completer = Completer<EmailAuthStatus>();
-    var requestCount = 0;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: LoginEmailScreen(
-          otpRequester: (_) {
-            requestCount++;
-            return completer.future;
-          },
-        ),
-      ),
-    );
-
-    await tester.enterText(find.byType(TextField), 'senior@example.com');
-    await tester.tap(find.text('SEND OTP'));
-    await tester.pump();
-
-    expect(find.text('SENDING...'), findsOneWidget);
-    await tester.tap(find.text('SENDING...'));
-    await tester.pump();
-    expect(requestCount, 1);
-
-    completer.complete(EmailAuthStatus.pendingApproval);
-    await tester.pumpAndSettle();
-    expect(
-      find.text(
-        'Your request is waiting for admin approval. Please try again after approval.',
-      ),
-      findsOneWidget,
-    );
   });
 
   testWidgets('retro buttons flash yellow and depress while pressed', (

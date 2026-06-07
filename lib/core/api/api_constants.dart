@@ -1,7 +1,7 @@
 class ApiConstants {
   ApiConstants._();
 
-  static const String baseUrl = 'PUT_BACKEND_BASE_URL_HERE';
+  static const String baseUrl = 'https://sneiors2027.runasp.net';
 
   // Auth
   static const String login = '/api/Auth/login';
