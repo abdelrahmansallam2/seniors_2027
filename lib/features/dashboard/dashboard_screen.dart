@@ -5,8 +5,10 @@ import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/constants/app_assets.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
+import 'package:seniors_27/features/dashboard/data/daily_highlights_api_service.dart';
 import 'package:seniors_27/features/dashboard/data/dashboard_api_service.dart';
 import 'package:seniors_27/features/dashboard/models/announcement.dart';
+import 'package:seniors_27/features/dashboard/models/daily_highlight.dart';
 import 'package:seniors_27/features/dashboard/models/event.dart';
 import 'package:seniors_27/features/dashboard/widgets/announcement_card.dart';
 import 'package:seniors_27/features/dashboard/widgets/challenge_poll_announcement_card.dart';
@@ -40,11 +42,16 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   late final DashboardApiService _api =
       widget.apiService ?? DashboardApiService(ApiClient());
+  late final DailyHighlightsApiService _highlightsApi =
+      DailyHighlightsApiService(ApiClient());
 
   List<Announcement> _announcements = [];
   List<Event> _events = [];
+  List<DailyHighlight> _highlights = [];
   bool _isLoading = true;
+  bool _highlightsLoading = true;
   String? _error;
+  String? _highlightsError;
 
   @override
   void initState() {
@@ -55,32 +62,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadData() async {
     setState(() {
       _isLoading = true;
+      _highlightsLoading = true;
       _error = null;
+      _highlightsError = null;
     });
     try {
       final results = await Future.wait([
         _api.getAnnouncements(),
         _api.getEvents(),
+        _highlightsApi.getActive(),
       ]);
       final announcementsData = results[0].data;
       final eventsData = results[1].data;
+      final highlightsData = results[2].data;
       if (!mounted) return;
       setState(() {
         _announcements = _parseAnnouncements(announcementsData);
         _events = _parseEvents(eventsData);
+        _highlights = _parseHighlights(highlightsData);
         _isLoading = false;
+        _highlightsLoading = false;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _error = e.message;
+        _highlightsError = e.message;
         _isLoading = false;
+        _highlightsLoading = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _error = 'Something went wrong. Please try again.';
+        _highlightsError = 'Something went wrong. Please try again.';
         _isLoading = false;
+        _highlightsLoading = false;
       });
     }
   }
@@ -101,6 +118,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .toList();
     }
     return [];
+  }
+
+  List<DailyHighlight> _parseHighlights(dynamic data) {
+    if (data is List) {
+      return data
+          .map((item) => DailyHighlight.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<void> _handleAddHighlight(String filePath, String? description) async {
+    await _highlightsApi.upload(filePath: filePath, description: description);
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Highlight submitted.')));
+      _loadHighlights();
+    }
+  }
+
+  Future<void> _loadHighlights() async {
+    setState(() => _highlightsLoading = true);
+    try {
+      final response = await _highlightsApi.getActive();
+      if (!mounted) return;
+      setState(() {
+        _highlights = _parseHighlights(response.data);
+        _highlightsLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _highlightsLoading = false);
+    }
   }
 
   @override
@@ -136,7 +186,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 28),
               const _DashboardHeroCard(),
               const SizedBox(height: 26),
-              const _DailyHighlightsSection(),
+              _DailyHighlightsSection(
+                highlights: _highlights,
+                isLoading: _highlightsLoading,
+                error: _highlightsError,
+                onAddToday: () => AddMemorySheet.show(
+                  context,
+                  onMemorySubmitted: _handleAddHighlight,
+                ),
+                onRetry: _loadData,
+              ),
               const SizedBox(height: 26),
               _buildAnnouncementsSection(),
               const SizedBox(height: 26),
@@ -327,7 +386,19 @@ class _DashboardHeroCard extends StatelessWidget {
 }
 
 class _DailyHighlightsSection extends StatelessWidget {
-  const _DailyHighlightsSection();
+  const _DailyHighlightsSection({
+    required this.highlights,
+    required this.isLoading,
+    required this.error,
+    required this.onAddToday,
+    required this.onRetry,
+  });
+
+  final List<DailyHighlight> highlights;
+  final bool isLoading;
+  final String? error;
+  final VoidCallback onAddToday;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -346,7 +417,7 @@ class _DailyHighlightsSection extends StatelessWidget {
             child: RetroButton(
               label: 'ADD TODAY',
               height: 34,
-              onPressed: () => AddMemorySheet.show(context),
+              onPressed: onAddToday,
               textStyle: const TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w900,
@@ -354,6 +425,56 @@ class _DailyHighlightsSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
+          _buildContent(context),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
+    if (isLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20),
+        child: DashboardUploadPlaceholder(),
+      );
+    }
+
+    if (error != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          children: [
+            const Text(
+              'Could not load highlights.',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                color: AppColors.muted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: 80,
+              child: RetroButton(
+                label: 'Retry',
+                height: 28,
+                onPressed: onRetry,
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 9,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (highlights.isEmpty) {
+      return Column(
+        children: [
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: DashboardUploadPlaceholder(),
@@ -395,8 +516,91 @@ class _DailyHighlightsSection extends StatelessWidget {
             ),
           ),
         ],
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: SizedBox(
+        height: 170,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: highlights.length,
+          separatorBuilder: (context, index) => const SizedBox(width: 10),
+          itemBuilder: (context, index) {
+            final h = highlights[index];
+            return _HighlightPolaroid(highlight: h);
+          },
+        ),
       ),
     );
+  }
+}
+
+class _HighlightPolaroid extends StatelessWidget {
+  const _HighlightPolaroid({required this.highlight});
+
+  final DailyHighlight highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 130,
+      child: Column(
+        children: [
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 30),
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                border: Border.all(color: AppColors.ink, width: 2.5),
+                boxShadow: const [
+                  BoxShadow(
+                    color: AppColors.ink,
+                    offset: Offset(4, 4),
+                    blurRadius: 0,
+                  ),
+                ],
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEEEEEE),
+                  border: Border.all(color: AppColors.ink, width: 1.2),
+                ),
+                child: Center(
+                  child: Text(
+                    _formatAuthor(highlight.authorName),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 7,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            highlight.date,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 7,
+              fontWeight: FontWeight.w600,
+              color: AppColors.muted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatAuthor(String name) {
+    if (name.isEmpty) return 'Today\'s memory';
+    return name;
   }
 }
 
