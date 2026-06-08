@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../storage/token_storage.dart';
 import 'api_constants.dart';
@@ -29,9 +30,31 @@ class ApiClient {
           if (token != null) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+          debugPrint('[API] ➡️ ${options.method} ${options.path}');
           handler.next(options);
         },
+        onResponse: (response, handler) {
+          final data = response.data;
+          final type = data is List
+              ? 'List(${data.length})'
+              : data is Map
+              ? 'Map(keys: ${data.keys})'
+              : '${data.runtimeType}';
+          debugPrint(
+            '[API] ⬅️ ${response.statusCode} ${response.requestOptions.path} → $type',
+          );
+          handler.next(response);
+        },
         onError: (error, handler) {
+          debugPrint(
+            '[API] ❌ ${error.response?.statusCode} '
+            '${error.requestOptions.path} '
+            '${error.message}',
+          );
+          if (error.response?.data is Map) {
+            final d = error.response!.data as Map;
+            debugPrint('[API] ❌ error data keys: ${d.keys}');
+          }
           handler.next(error);
         },
       ),

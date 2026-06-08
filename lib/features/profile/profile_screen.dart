@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
+import 'package:seniors_27/features/profile/models/profile_user.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
 import 'package:seniors_27/shared/widgets/retro_photo_placeholder.dart';
@@ -16,177 +17,220 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       key: const PageStorageKey('profile_scroll'),
-      padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
+      padding: const EdgeInsets.fromLTRB(22, 30, 22, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const MainPageHeader(
-            title: 'My Profile',
-            subtitle: 'Senior 2027 page',
-          ),
-          const SizedBox(height: 25),
-          Stack(
+          const Stack(
             clipBehavior: Clip.none,
             children: [
-              const RetroSectionHeader(
-                title: 'SENIOR_HERO',
-                backgroundColor: AppColors.yellowWarm,
+              MainPageHeader(
+                title: 'My Profile',
+                subtitle: 'Your senior identity.',
               ),
               Positioned(
-                top: -15,
-                right: -5,
-                child: Transform.rotate(
-                  angle: 0.1,
-                  child: const RetroSticker(
-                    color: AppColors.pink,
-                    width: 40,
-                    height: 40,
-                  ),
+                top: 2,
+                right: 4,
+                child: RetroSticker(
+                  color: AppColors.magenta,
+                  width: 58,
+                  height: 20,
+                  angle: 0.12,
                 ),
               ),
             ],
           ),
-          RetroCard(
-            borderRadius: 0,
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const RetroPhotoPlaceholder(
-                  label: 'PROFILE',
-                  width: 100,
-                  height: 130,
-                  backgroundColor: AppColors.cyan,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'HELLO\nSENIOR BILLY',
-                        style: TextStyle(
-                          fontSize: 22,
-                          height: 1.05,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        'When life gets loud,\nturn the music up.',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          _SocialButton(label: 'IG', color: AppColors.pink),
-                          const SizedBox(width: 8),
-                          _SocialButton(label: 'IN', color: AppColors.cyan),
-                          const SizedBox(width: 8),
-                          _SocialButton(label: 'SP', color: AppColors.green),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+          const SizedBox(height: 24),
+          _ProfileCard(user: mockProfileUser),
+          const SizedBox(height: 26),
+          const _LinksSection(),
+          const SizedBox(height: 26),
+          const _FavoriteSongSection(),
+          const SizedBox(height: 26),
+          const _GalleryPreviewSection(),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: RetroButton(
+              label: 'OPEN NOTES',
+              height: 46,
+              backgroundColor: AppColors.orange,
+              onPressed: onOpenNotes,
+              textStyle: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
-          const SizedBox(height: 25),
-          const RetroSectionHeader(
-            title: 'MY STATS',
-            backgroundColor: AppColors.cyan,
-          ),
           const SizedBox(height: 12),
-          const Row(
-            children: [
-              Expanded(
-                child: _StatBox(label: 'POINTS', value: '850'),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: _StatBox(label: 'RANK', value: '#12'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 25),
-          const RetroSectionHeader(
-            title: 'NOTES',
-            backgroundColor: AppColors.orange,
-          ),
-          const SizedBox(height: 12),
-          RetroCard(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              children: [
-                const _NotePreview(
-                  author: 'JOE',
-                  message: 'Best memories live here.',
-                ),
-                const SizedBox(height: 12),
-                const _NotePreview(
-                  author: 'TAHA',
-                  message: 'Class of 2027 forever.',
-                ),
-                const SizedBox(height: 16),
-                RetroButton(
-                  label: 'OPEN FULL BOOK',
-                  height: 42,
-                  onPressed: onOpenNotes,
-                  textStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 25),
-          const RetroSectionHeader(
-            title: 'GALLERY',
-            backgroundColor: AppColors.yellow,
-          ),
-          const SizedBox(height: 12),
-          const RetroPhotoPlaceholder(height: 140, label: 'GALLERY PHOTO'),
-          const SizedBox(height: 10),
         ],
       ),
     );
   }
 }
 
-class _StatBox extends StatelessWidget {
-  const _StatBox({required this.label, required this.value});
+class _ProfileCard extends StatelessWidget {
+  const _ProfileCard({required this.user});
+
+  final ProfileUser user;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        RetroCard(
+          padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+          child: Column(
+            children: [
+              Center(
+                child: RetroPhotoPlaceholder(
+                  label: 'PHOTO',
+                  width: 140,
+                  height: 180,
+                  backgroundColor: AppColors.cyan,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Center(
+                child: Column(
+                  children: [
+                    Text(
+                      user.name,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 28,
+                        height: 1.05,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      user.role,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      user.description,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (user.gender.isNotEmpty || user.email.isNotEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.paper,
+                          border: Border.all(color: AppColors.ink, width: 1.5),
+                        ),
+                        child: Column(
+                          children: [
+                            if (user.gender.isNotEmpty)
+                              _MetaLine(label: 'Gender', value: user.gender),
+                            if (user.gender.isNotEmpty && user.email.isNotEmpty)
+                              const SizedBox(height: 4),
+                            if (user.email.isNotEmpty)
+                              _MetaLine(label: 'Email', value: user.email),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Positioned(
+          top: -8,
+          right: -6,
+          child: Transform.rotate(
+            angle: 0.15,
+            child: const RetroSticker(
+              color: AppColors.pink,
+              width: 36,
+              height: 36,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MetaLine extends StatelessWidget {
+  const _MetaLine({required this.label, required this.value});
 
   final String label;
   final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.paper,
-        border: Border.all(color: AppColors.ink, width: 2.5),
-      ),
-      child: Column(
-        children: [
-          Text(
-            label,
+    return Row(
+      children: [
+        Text(
+          '$label: ',
+          style: const TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 8,
+            fontWeight: FontWeight.w700,
+            color: AppColors.muted,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontFamily: 'monospace',
-              fontSize: 10,
+              fontSize: 8,
               fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+        ),
+      ],
+    );
+  }
+}
+
+class _LinksSection extends StatelessWidget {
+  const _LinksSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return RetroCard(
+      padding: EdgeInsets.zero,
+      backgroundColor: AppColors.paper,
+      child: Column(
+        children: [
+          const RetroSectionHeader(
+            title: 'LINKS',
+            backgroundColor: AppColors.yellow,
+          ),
+          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _LinkButton(label: 'IG', color: AppColors.pink),
+                _LinkButton(label: 'LN', color: AppColors.cyan),
+                _LinkButton(label: 'GH', color: AppColors.green),
+                _LinkButton(label: 'PF', color: AppColors.orange),
+              ],
+            ),
           ),
         ],
       ),
@@ -194,8 +238,8 @@ class _StatBox extends StatelessWidget {
   }
 }
 
-class _SocialButton extends StatelessWidget {
-  const _SocialButton({required this.label, required this.color});
+class _LinkButton extends StatelessWidget {
+  const _LinkButton({required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -203,10 +247,10 @@ class _SocialButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 42,
+      width: 60,
       child: RetroButton(
         label: label,
-        height: 34,
+        height: 38,
         backgroundColor: color,
         shadowOffset: const Offset(3, 3),
         onPressed: () {},
@@ -216,44 +260,108 @@ class _SocialButton extends StatelessWidget {
   }
 }
 
-class _NotePreview extends StatelessWidget {
-  const _NotePreview({required this.author, required this.message});
-
-  final String author;
-  final String message;
+class _FavoriteSongSection extends StatelessWidget {
+  const _FavoriteSongSection();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.paper,
-        border: Border.all(color: AppColors.ink, width: 2),
+    return RetroCard(
+      padding: EdgeInsets.zero,
+      backgroundColor: AppColors.paper,
+      child: Column(
+        children: [
+          const RetroSectionHeader(
+            title: 'FAVORITE SONG',
+            backgroundColor: AppColors.pink,
+          ),
+          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.paper,
+                border: Border.all(color: AppColors.ink, width: 2),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.music_note, size: 28, color: AppColors.ink),
+                  const SizedBox(width: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        mockProfileUser.song?.title ?? 'No song yet',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        mockProfileUser.song?.artist ?? '',
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class _GalleryPreviewSection extends StatelessWidget {
+  const _GalleryPreviewSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return RetroCard(
+      padding: EdgeInsets.zero,
+      backgroundColor: AppColors.paper,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                author,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const Icon(Icons.push_pin, size: 14, color: AppColors.pink),
-            ],
+          const RetroSectionHeader(
+            title: 'GALLERY',
+            backgroundColor: AppColors.cyan,
           ),
-          const SizedBox(height: 8),
-          Text(
-            message,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              fontStyle: FontStyle.italic,
+          const SizedBox(height: 14),
+          const SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.fromLTRB(18, 0, 18, 18),
+            child: Row(
+              children: [
+                RetroPhotoPlaceholder(
+                  label: 'MEMORY',
+                  width: 100,
+                  height: 110,
+                  backgroundColor: AppColors.yellow,
+                ),
+                SizedBox(width: 10),
+                RetroPhotoPlaceholder(
+                  label: 'MEMORY',
+                  width: 100,
+                  height: 110,
+                  backgroundColor: AppColors.green,
+                ),
+                SizedBox(width: 10),
+                RetroPhotoPlaceholder(
+                  label: 'MEMORY',
+                  width: 100,
+                  height: 110,
+                  backgroundColor: AppColors.pink,
+                ),
+              ],
             ),
           ),
         ],

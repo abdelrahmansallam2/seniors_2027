@@ -80,6 +80,11 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
           .map((item) => SeniorStudent.fromJson(item as Map<String, dynamic>))
           .toList();
     }
+    if (data is Map && data['items'] is List) {
+      return (data['items'] as List)
+          .map((item) => SeniorStudent.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
     return [];
   }
 
