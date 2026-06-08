@@ -18,7 +18,7 @@ class PollOption {
 
   factory PollOption.fromJson(Map<String, dynamic> json) {
     return PollOption(
-      id: json['id'] as String? ?? '',
+      id: (json['id'] as num?)?.toString() ?? '',
       title: json['title'] as String? ?? '',
       votes: json['votes'] as int? ?? 0,
       percentage: (json['percentage'] as num?)?.toDouble() ?? 0.0,

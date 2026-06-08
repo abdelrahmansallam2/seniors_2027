@@ -40,7 +40,7 @@ class Announcement {
     final typeValue = json['type'] as String? ?? 'normal_announcement';
 
     return Announcement(
-      id: json['id'] as String? ?? '',
+      id: (json['id'] as num?)?.toString() ?? '',
       type: AnnouncementTypeX.fromApi(typeValue),
       title: json['title'] as String? ?? '',
       description: json['description'] as String? ?? '',
