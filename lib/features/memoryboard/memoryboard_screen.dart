@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/core/api/api_exception.dart';
@@ -298,9 +299,12 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
           ),
           itemBuilder: (context, index) {
             final rotation = (index % 2 == 0 ? -1.5 : 1.5) * math.pi / 180;
-            return _PolaroidCard(
-              memory: pageMemories[index],
-              rotation: rotation,
+            return GestureDetector(
+              onTap: () => _showImagePreview(pageMemories[index]),
+              child: _PolaroidCard(
+                memory: pageMemories[index],
+                rotation: rotation,
+              ),
             );
           },
         ),
@@ -326,6 +330,146 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
       child: child,
     );
   }
+
+  void _showImagePreview(Memory memory) {
+    if (memory.imageUrl == null || memory.imageUrl!.isEmpty) return;
+
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Close',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (_, _, _) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    constraints: const BoxConstraints(maxWidth: 500),
+                    decoration: BoxDecoration(
+                      color: AppColors.paper,
+                      border: Border.all(color: AppColors.ink, width: 3),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: AppColors.ink,
+                          offset: Offset(6, 6),
+                          blurRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(height: 12),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 420),
+                            child: Image.network(
+                              memory.imageUrl!,
+                              fit: BoxFit.contain,
+                              loadingBuilder: (_, child, progress) {
+                                if (progress == null) return child;
+                                return const SizedBox(
+                                  height: 200,
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 3,
+                                      color: AppColors.ink,
+                                    ),
+                                  ),
+                                );
+                              },
+                              errorBuilder: (_, _, _) => Container(
+                                height: 200,
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  'Failed to load image.',
+                                  style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.muted,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (memory.name.isNotEmpty ||
+                            memory.date.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          if (memory.name.isNotEmpty)
+                            Text(
+                              memory.name,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.ink,
+                              ),
+                            ),
+                          if (memory.name.isNotEmpty && memory.date.isNotEmpty)
+                            const SizedBox(height: 2),
+                          if (memory.date.isNotEmpty)
+                            Text(
+                              memory.date,
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.muted,
+                              ),
+                            ),
+                        ],
+                        const SizedBox(height: 16),
+                      ],
+                    ),
+                  ),
+                  Positioned(
+                    top: -12,
+                    right: -12,
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: AppColors.paper,
+                          border: Border.all(color: AppColors.ink, width: 2.5),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: AppColors.ink,
+                              offset: Offset(2, 2),
+                              blurRadius: 0,
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: const Text(
+                          'X',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _PolaroidCard extends StatelessWidget {
@@ -339,47 +483,96 @@ class _PolaroidCard extends StatelessWidget {
     return Transform.rotate(
       angle: rotation,
       child: Stack(
-        alignment: Alignment.center,
+        clipBehavior: Clip.none,
         children: [
-          Positioned.fill(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(6, 6, 6, 22),
-              child: Container(
-                decoration: BoxDecoration(color: _getPastelColor(memory.id)),
-              ),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.paper,
+              border: Border.all(color: AppColors.ink, width: 1.2),
+              boxShadow: const [
+                BoxShadow(
+                  color: AppColors.ink,
+                  offset: Offset(3, 3),
+                  blurRadius: 0,
+                ),
+              ],
             ),
-          ),
-          Image.asset(AppAssets.polaroidFrame, fit: BoxFit.fill),
-          Positioned(
-            bottom: 8,
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  memory.name,
-                  style: const TextStyle(
-                    fontSize: 6,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.ink,
-                    height: 1,
+                const SizedBox(height: 8),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(1),
+                      child: _buildPhotoContent(),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 1),
-                Text(
-                  memory.date,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 5,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.muted,
-                    height: 1,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        memory.name,
+                        style: const TextStyle(
+                          fontSize: 6,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.ink,
+                          height: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        memory.date,
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.muted,
+                          height: 1,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
+          Positioned(
+            top: -3,
+            left: 16,
+            child: Container(
+              width: 20,
+              height: 10,
+              decoration: BoxDecoration(
+                color: AppColors.yellowWarm.withValues(alpha: 0.7),
+                border: Border.all(color: AppColors.ink, width: 0.5),
+              ),
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPhotoContent() {
+    if (memory.imageUrl != null && memory.imageUrl!.isNotEmpty) {
+      return Image.network(
+        memory.imageUrl!,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (_, _, _) => _buildPlaceholder(),
+      );
+    }
+    return _buildPlaceholder();
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      decoration: BoxDecoration(color: _getPastelColor(memory.id)),
     );
   }
 

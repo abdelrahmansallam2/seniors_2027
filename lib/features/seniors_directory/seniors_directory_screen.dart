@@ -22,19 +22,23 @@ class SeniorsDirectoryScreen extends StatefulWidget {
 class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
   final _api = SeniorsApiService(ApiClient());
   final TextEditingController _searchController = TextEditingController();
-  int _currentPage = 0;
-  static const int _pageSize = 9;
 
   List<SeniorStudent> _allSeniors = [];
   List<SeniorStudent> _filteredSeniors = [];
   bool _isLoading = true;
   String? _error;
 
+  int _pageNumber = 1;
+  int _totalPages = 1;
+  bool _hasNextPage = false;
+  int _totalCount = 0;
+  static const int _pageSize = 10;
+
   @override
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
-    _loadData();
+    _loadData(pageNumber: 1);
   }
 
   @override
@@ -44,18 +48,23 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
     super.dispose();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({required int pageNumber}) async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
     try {
-      final response = await _api.getUsers();
+      final response = await _api.getUsers(
+        pageNumber: pageNumber,
+        pageSize: _pageSize,
+      );
       final data = response.data;
       if (!mounted) return;
       final seniors = _parseSeniors(data);
+      _parsePaginationMeta(data);
       setState(() {
         _allSeniors = seniors;
+        _pageNumber = pageNumber;
         _applyFilter();
         _isLoading = false;
       });
@@ -88,6 +97,14 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
     return [];
   }
 
+  void _parsePaginationMeta(dynamic data) {
+    if (data is Map) {
+      _totalCount = (data['totalCount'] as num?)?.toInt() ?? _totalCount;
+      _totalPages = (data['totalPages'] as num?)?.toInt() ?? _totalPages;
+      _hasNextPage = data['hasNextPage'] as bool? ?? false;
+    }
+  }
+
   void _onSearchChanged() {
     _applyFilter();
   }
@@ -95,7 +112,6 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
   void _applyFilter() {
     final query = _searchController.text.toLowerCase();
     setState(() {
-      _currentPage = 0;
       if (query.isEmpty) {
         _filteredSeniors = List.of(_allSeniors);
       } else {
@@ -189,7 +205,7 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
                 child: RetroButton(
                   label: 'Retry',
                   height: 36,
-                  onPressed: _loadData,
+                  onPressed: () => _loadData(pageNumber: _pageNumber),
                   textStyle: const TextStyle(
                     fontWeight: FontWeight.w900,
                     fontSize: 10,
@@ -235,11 +251,6 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
   }
 
   Widget _buildGrid() {
-    final totalPages = (_filteredSeniors.length / _pageSize).ceil();
-    final start = _currentPage * _pageSize;
-    final end = (start + _pageSize).clamp(0, _filteredSeniors.length);
-    final pageSeniors = _filteredSeniors.sublist(start, end);
-
     if (_filteredSeniors.isEmpty) {
       return const SeniorsEmptyState();
     }
@@ -249,7 +260,7 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: pageSeniors.length,
+          itemCount: _filteredSeniors.length,
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
             crossAxisSpacing: 12,
@@ -257,11 +268,11 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
             childAspectRatio: 0.65,
           ),
           itemBuilder: (context, index) {
-            return SeniorCard(senior: pageSeniors[index]);
+            return SeniorCard(senior: _filteredSeniors[index]);
           },
         ),
         const SizedBox(height: 32),
-        if (totalPages > 1)
+        if (_totalPages > 1)
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -270,14 +281,14 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
                 child: RetroButton(
                   label: 'PREV',
                   height: 36,
-                  onPressed: _currentPage > 0
-                      ? () => setState(() => _currentPage--)
+                  onPressed: _pageNumber > 1
+                      ? () => _loadData(pageNumber: _pageNumber - 1)
                       : null,
                 ),
               ),
               const SizedBox(width: 16),
               Text(
-                'PAGE ${_currentPage + 1} / $totalPages',
+                'PAGE $_pageNumber / $_totalPages',
                 style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 12,
@@ -290,8 +301,8 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
                 child: RetroButton(
                   label: 'NEXT',
                   height: 36,
-                  onPressed: _currentPage < totalPages - 1
-                      ? () => setState(() => _currentPage++)
+                  onPressed: _hasNextPage
+                      ? () => _loadData(pageNumber: _pageNumber + 1)
                       : null,
                 ),
               ),

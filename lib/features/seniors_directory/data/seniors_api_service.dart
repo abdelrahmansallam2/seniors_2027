@@ -8,8 +8,11 @@ class SeniorsApiService {
 
   SeniorsApiService(this._client);
 
-  Future<Response> getUsers() {
-    return _client.get(ApiConstants.users);
+  Future<Response> getUsers({int pageNumber = 1, int pageSize = 10}) {
+    return _client.get(
+      ApiConstants.users,
+      queryParameters: {'pageNumber': pageNumber, 'pageSize': pageSize},
+    );
   }
 
   Future<Response> getUserById(String id) {

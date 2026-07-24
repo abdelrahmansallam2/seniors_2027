@@ -22,10 +22,22 @@ class SeniorCard extends StatelessWidget {
       child: Column(
         children: [
           Expanded(
-            child: RetroPhotoPlaceholder(
-              label: 'PHOTO',
-              backgroundColor: _getDepartmentColor(senior.department),
-            ),
+            child: senior.photoUrl != null && senior.photoUrl!.isNotEmpty
+                ? ClipRect(
+                    child: Image.network(
+                      senior.photoUrl!,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      errorBuilder: (_, _, _) => RetroPhotoPlaceholder(
+                        label: 'PHOTO',
+                        backgroundColor: _getDepartmentColor(senior.department),
+                      ),
+                    ),
+                  )
+                : RetroPhotoPlaceholder(
+                    label: 'PHOTO',
+                    backgroundColor: _getDepartmentColor(senior.department),
+                  ),
           ),
           const SizedBox(height: 8),
           Text(
