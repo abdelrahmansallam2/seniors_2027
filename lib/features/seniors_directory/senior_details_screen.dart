@@ -51,12 +51,30 @@ class SeniorDetailsScreen extends StatelessWidget {
                           // Photo Placeholder
                           AspectRatio(
                             aspectRatio: 1,
-                            child: RetroPhotoPlaceholder(
-                              label: senior.department,
-                              backgroundColor: _getDepartmentColor(
-                                senior.department,
-                              ),
-                            ),
+                            child:
+                                senior.photoUrl != null &&
+                                    senior.photoUrl!.isNotEmpty
+                                ? ClipRect(
+                                    child: Image.network(
+                                      senior.photoUrl!,
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      errorBuilder: (_, _, _) =>
+                                          RetroPhotoPlaceholder(
+                                            label: senior.department,
+                                            backgroundColor:
+                                                _getDepartmentColor(
+                                                  senior.department,
+                                                ),
+                                          ),
+                                    ),
+                                  )
+                                : RetroPhotoPlaceholder(
+                                    label: senior.department,
+                                    backgroundColor: _getDepartmentColor(
+                                      senior.department,
+                                    ),
+                                  ),
                           ),
                           const SizedBox(height: 24),
 

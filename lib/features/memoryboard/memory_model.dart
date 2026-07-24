@@ -34,9 +34,13 @@ class Memory {
     }
 
     return Memory(
-      id: (json['id'] as num?)?.toString() ?? '',
-      name: json['name'] as String? ?? '',
-      date: json['date'] as String? ?? '',
+      id: (json['id'] as num?)?.toString() ?? json['id'] as String? ?? '',
+      name: json['username'] as String? ?? json['name'] as String? ?? '',
+      date:
+          json['sortDateUtc'] as String? ??
+          json['createdAt'] as String? ??
+          json['date'] as String? ??
+          '',
       imageUrl: resolvedUrl,
       description: json['description'] as String?,
     );

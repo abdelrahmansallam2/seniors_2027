@@ -127,7 +127,9 @@ class ApiClient {
                   final kLower = k.toString().toLowerCase();
                   if (kLower.contains('token') ||
                       kLower.contains('password') ||
-                      kLower.contains('otp')) {
+                      kLower.contains('otp') ||
+                      kLower.contains('secret') ||
+                      kLower.contains('pin')) {
                     safe[k.toString()] = '***';
                   } else {
                     safe[k.toString()] = first[k];
@@ -177,7 +179,9 @@ class ApiClient {
                   final kLower = k.toString().toLowerCase();
                   if (kLower.contains('token') ||
                       kLower.contains('password') ||
-                      kLower.contains('otp')) {
+                      kLower.contains('otp') ||
+                      kLower.contains('secret') ||
+                      kLower.contains('pin')) {
                     safe[k.toString()] = '***';
                   } else {
                     safe[k.toString()] = first[k];
@@ -235,7 +239,9 @@ class ApiClient {
                   final kLower = k.toString().toLowerCase();
                   if (kLower.contains('token') ||
                       kLower.contains('password') ||
-                      kLower.contains('otp')) {
+                      kLower.contains('otp') ||
+                      kLower.contains('secret') ||
+                      kLower.contains('pin')) {
                     safe[k.toString()] = '***';
                   } else {
                     safe[k.toString()] = first[k];
@@ -276,7 +282,9 @@ class ApiClient {
                   final kLower = k.toString().toLowerCase();
                   if (kLower.contains('token') ||
                       kLower.contains('password') ||
-                      kLower.contains('otp')) {
+                      kLower.contains('otp') ||
+                      kLower.contains('secret') ||
+                      kLower.contains('pin')) {
                     safe[k.toString()] = '***';
                   } else {
                     safe[k.toString()] = first[k];
