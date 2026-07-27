@@ -299,9 +299,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('My Profile'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('OPEN NOTES'));
+    await tester.ensureVisible(find.text('OPEN BOOK'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('OPEN NOTES'));
+    await tester.tap(find.text('OPEN BOOK'));
     await tester.pumpAndSettle();
     expect(find.text('Open Book'), findsOneWidget);
 

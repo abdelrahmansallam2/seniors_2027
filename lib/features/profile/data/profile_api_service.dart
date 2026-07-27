@@ -1,0 +1,14 @@
+import 'package:dio/dio.dart';
+
+import '../../../core/api/api_client.dart';
+import '../../../core/api/api_constants.dart';
+
+class ProfileApiService {
+  final ApiClient _client;
+
+  ProfileApiService(this._client);
+
+  Future<Response> getMe() {
+    return _client.get(ApiConstants.me);
+  }
+}
