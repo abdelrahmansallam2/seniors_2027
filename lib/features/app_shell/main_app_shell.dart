@@ -41,9 +41,19 @@ class _MainAppShellState extends State<MainAppShell> {
     });
   }
 
+  void _closeNotes() {
+    setState(() {
+      _notesOpen = false;
+    });
+  }
+
   Widget _selectedScreen() {
     if (_notesOpen) {
-      return const NotesOpenBookScreen(key: ValueKey('notes'));
+      return NotesOpenBookScreen(
+        key: const ValueKey('notes'),
+        onBackToProfile: _closeNotes,
+        openedFromProfile: true,
+      );
     }
 
     return switch (_currentIndex) {

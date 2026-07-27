@@ -28,4 +28,14 @@ class ApiConstants {
 
   // Notes
   static const String notes = '/api/Notes';
+  static const String notesRange = '/api/Notes/range';
+  static String noteReactions(String noteId) => '/api/Notes/$noteId/reactions';
+  static String noteById(String noteId) => '/api/Notes/$noteId';
+  static String notesReceived(String recipientId) =>
+      '/api/Notes/received/$recipientId';
+  static String notesReceivedLatest(String recipientId) =>
+      '/api/Notes/received/$recipientId/latest';
+
+  // Gallery
+  static String galleryUser(String userId) => '/api/Gallery/user/$userId';
 }
