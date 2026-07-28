@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/features/auth/login_email_screen.dart';
+import 'package:seniors_27/features/auth/login_gender_screen.dart';
+import 'package:seniors_27/features/auth/login_otp_screen.dart';
+import 'package:seniors_27/features/auth/login_username_screen.dart';
 import 'package:seniors_27/features/app_shell/main_app_shell.dart';
 import 'package:seniors_27/main.dart';
 import 'package:seniors_27/shared/widgets/app_logo.dart';
@@ -12,9 +15,7 @@ import 'package:seniors_27/shared/widgets/retro_bottom_nav.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
 
 void main() {
-  testWidgets('validates and completes the authentication flow', (
-    tester,
-  ) async {
+  testWidgets('splash screen transitions to login screen', (tester) async {
     await tester.pumpWidget(const SeniorsApp());
 
     expect(find.byType(AppLogo), findsOneWidget);
@@ -34,6 +35,22 @@ void main() {
 
     expect(find.text('STEP 1 / 5'), findsOneWidget);
     expect(find.text('EMAIL IS REQUIRED.'), findsNothing);
+  });
+
+  testWidgets('validates and completes the authentication flow', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginEmailScreen(
+          otpRequester: (_) async => EmailAuthStatus.otpSent,
+          otpVerifier: (_, _) async => null,
+        ),
+      ),
+    );
+
+    expect(find.text('STEP 1 / 5'), findsOneWidget);
+    expect(find.text('EMAIL IS REQUIRED.'), findsNothing);
 
     await tester.tap(find.text('SEND OTP'));
     await tester.pumpAndSettle();
@@ -49,12 +66,11 @@ void main() {
     expect(find.text('ENTER A VALID EMAIL ADDRESS.'), findsNothing);
 
     await tester.tap(find.text('SEND OTP'));
-    await tester.pump(const Duration(milliseconds: 510));
+    await tester.pump(const Duration(milliseconds: 260));
     expect(
       find.text('OTP sent successfully. Please check your email.'),
       findsOneWidget,
     );
-    await tester.pump(const Duration(milliseconds: 260));
     await tester.pumpAndSettle();
     expect(find.text('ENTER OTP'), findsOneWidget);
     expect(find.text('STEP 2 / 5'), findsOneWidget);
@@ -74,106 +90,42 @@ void main() {
 
     await tester.tap(find.text('VERIFY'));
     await tester.pumpAndSettle();
-    expect(find.text('USERNAME'), findsAtLeastNWidgets(1));
-    expect(find.text('STEP 3 / 5'), findsOneWidget);
-
-    await tester.tap(find.text('NEXT'));
-    await tester.pumpAndSettle();
-    expect(find.text('USERNAME IS REQUIRED.'), findsOneWidget);
-    expect(find.text('GENDER'), findsNothing);
-
-    await tester.enterText(find.byType(TextField), 'AB');
-    await tester.pump();
-    expect(
-      find.text('USERNAME MUST BE AT LEAST 3 CHARACTERS.'),
-      findsOneWidget,
-    );
-
-    await tester.enterText(find.byType(TextField), 'SAM');
-    await tester.pump();
-    expect(find.text('USERNAME MUST BE AT LEAST 3 CHARACTERS.'), findsNothing);
-
-    await tester.tap(find.text('NEXT'));
-    await tester.pumpAndSettle();
-    expect(find.text('GENDER'), findsOneWidget);
-    expect(find.text('STEP 4 / 5'), findsOneWidget);
-    expect(find.text('SELECT A GENDER TO CONTINUE.'), findsNothing);
-
-    BoxDecoration optionDecoration(Key key) {
-      final option = tester.widget<AnimatedContainer>(find.byKey(key));
-      return option.decoration! as BoxDecoration;
-    }
-
-    await tester.tap(find.text('NEXT'));
-    await tester.pumpAndSettle();
-    expect(find.text('SELECT A GENDER TO CONTINUE.'), findsOneWidget);
-    expect(find.text('Dashboard'), findsNothing);
-
-    await tester.tap(find.text('MALE'));
-    await tester.pumpAndSettle();
-    expect(find.text('SELECT A GENDER TO CONTINUE.'), findsNothing);
-    expect(
-      optionDecoration(const Key('male_gender_option')).color,
-      AppColors.cyan,
-    );
-    expect(
-      optionDecoration(const Key('female_gender_option')).color,
-      AppColors.paper,
-    );
-
-    await tester.tap(find.text('FEMALE'));
-    await tester.pumpAndSettle();
-    expect(
-      optionDecoration(const Key('male_gender_option')).color,
-      AppColors.paper,
-    );
-    expect(
-      optionDecoration(const Key('female_gender_option')).color,
-      AppColors.pink,
-    );
-
-    await tester.tap(find.text('NEXT'));
-    await tester.pumpAndSettle();
     expect(find.text('Dashboard'), findsOneWidget);
     expect(find.text('BUILT TO BE'), findsOneWidget);
     expect(find.text('REMEMBERED'), findsOneWidget);
   });
 
-  testWidgets('main shell navigates between yearbook sections', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: MainAppShell()));
-
-    Finder tab(String label) => find.descendant(
-      of: find.byType(RetroBottomNav),
-      matching: find.text(label),
+  testWidgets('otp screen shows api error on failed verification', (
+    tester,
+  ) async {
+    const errorMessage = 'Invalid OTP code';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginOtpScreen(
+          email: 'senior@example.com',
+          verifier: (_, _) async => errorMessage,
+        ),
+      ),
     );
 
-    expect(find.text('Dashboard'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), '000000');
+    await tester.tap(find.text('VERIFY'));
+    await tester.pumpAndSettle();
 
-    await tester.tap(tab('SENIORS'));
-    await tester.pumpAndSettle();
-    expect(find.text('Seniors'), findsOneWidget);
+    expect(find.text(errorMessage), findsOneWidget);
+    expect(find.text('Dashboard'), findsNothing);
+  });
 
-    await tester.tap(tab('MEMORY'));
-    await tester.pumpAndSettle();
-    expect(find.text('Memoryboard'), findsOneWidget);
+  testWidgets('otp screen shows error on verify with empty otp', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(home: const LoginOtpScreen(email: 'senior@example.com')),
+    );
 
-    await tester.tap(tab('BOARD'));
+    await tester.tap(find.text('VERIFY'));
     await tester.pumpAndSettle();
-    expect(find.text('Leaderboard'), findsOneWidget);
-
-    await tester.tap(tab('PROFILE'));
-    await tester.pumpAndSettle();
-    expect(find.text('My Profile'), findsOneWidget);
-
-    await tester.ensureVisible(find.text('OPEN FULL BOOK'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('OPEN FULL BOOK'));
-    await tester.pumpAndSettle();
-    expect(find.text('Open Book'), findsOneWidget);
-
-    await tester.tap(tab('PROFILE'));
-    await tester.pumpAndSettle();
-    expect(find.text('My Profile'), findsOneWidget);
+    expect(find.text('OTP IS REQUIRED.'), findsOneWidget);
   });
 
   testWidgets('email approval responses stay on the email step', (
@@ -242,6 +194,120 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('username screen validates and navigates to gender', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: LoginUsernameScreen()));
+
+    expect(find.text('USERNAME'), findsAtLeastNWidgets(1));
+    expect(find.text('STEP 3 / 5'), findsOneWidget);
+
+    await tester.tap(find.text('NEXT'));
+    await tester.pumpAndSettle();
+    expect(find.text('USERNAME IS REQUIRED.'), findsOneWidget);
+    expect(find.text('GENDER'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), 'AB');
+    await tester.pump();
+    expect(
+      find.text('USERNAME MUST BE AT LEAST 3 CHARACTERS.'),
+      findsOneWidget,
+    );
+
+    await tester.enterText(find.byType(TextField), 'SAM');
+    await tester.pump();
+    expect(find.text('USERNAME MUST BE AT LEAST 3 CHARACTERS.'), findsNothing);
+
+    await tester.tap(find.text('NEXT'));
+    await tester.pumpAndSettle();
+    expect(find.text('GENDER'), findsOneWidget);
+    expect(find.text('STEP 4 / 5'), findsOneWidget);
+    expect(find.text('SELECT A GENDER TO CONTINUE.'), findsNothing);
+  });
+
+  testWidgets('gender screen validates and navigates to home', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: LoginGenderScreen()));
+
+    expect(find.text('GENDER'), findsOneWidget);
+    expect(find.text('SELECT A GENDER TO CONTINUE.'), findsNothing);
+
+    BoxDecoration optionDecoration(Key key) {
+      final option = tester.widget<AnimatedContainer>(find.byKey(key));
+      return option.decoration! as BoxDecoration;
+    }
+
+    await tester.tap(find.text('NEXT'));
+    await tester.pumpAndSettle();
+    expect(find.text('SELECT A GENDER TO CONTINUE.'), findsOneWidget);
+    expect(find.text('Dashboard'), findsNothing);
+
+    await tester.tap(find.text('MALE'));
+    await tester.pumpAndSettle();
+    expect(find.text('SELECT A GENDER TO CONTINUE.'), findsNothing);
+    expect(
+      optionDecoration(const Key('male_gender_option')).color,
+      AppColors.cyan,
+    );
+    expect(
+      optionDecoration(const Key('female_gender_option')).color,
+      AppColors.paper,
+    );
+
+    await tester.tap(find.text('FEMALE'));
+    await tester.pumpAndSettle();
+    expect(
+      optionDecoration(const Key('male_gender_option')).color,
+      AppColors.paper,
+    );
+    expect(
+      optionDecoration(const Key('female_gender_option')).color,
+      AppColors.pink,
+    );
+
+    await tester.tap(find.text('NEXT'));
+    await tester.pumpAndSettle();
+    expect(find.text('Dashboard'), findsOneWidget);
+    expect(find.text('BUILT TO BE'), findsOneWidget);
+    expect(find.text('REMEMBERED'), findsOneWidget);
+  });
+
+  testWidgets('main shell navigates between yearbook sections', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: MainAppShell()));
+
+    Finder tab(String label) => find.descendant(
+      of: find.byType(RetroBottomNav),
+      matching: find.text(label),
+    );
+
+    expect(find.text('Dashboard'), findsOneWidget);
+
+    await tester.tap(tab('SENIORS'));
+    await tester.pumpAndSettle();
+    expect(find.text('Seniors'), findsOneWidget);
+
+    await tester.tap(tab('MEMORY'));
+    await tester.pumpAndSettle();
+    expect(find.text('Memoryboard'), findsOneWidget);
+
+    await tester.tap(tab('BOARD'));
+    await tester.pumpAndSettle();
+    expect(find.text('Leaderboard'), findsOneWidget);
+
+    await tester.tap(tab('PROFILE'));
+    await tester.pumpAndSettle();
+    expect(find.text('My Profile'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('OPEN BOOK'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OPEN BOOK'));
+    await tester.pumpAndSettle();
+    expect(find.text('Open Book'), findsOneWidget);
+
+    await tester.tap(tab('PROFILE'));
+    await tester.pumpAndSettle();
+    expect(find.text('My Profile'), findsOneWidget);
   });
 
   testWidgets('retro buttons flash yellow and depress while pressed', (

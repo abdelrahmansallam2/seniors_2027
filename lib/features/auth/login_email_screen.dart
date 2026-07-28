@@ -1,9 +1,13 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:seniors_27/core/api/api_client.dart';
+import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/core/navigation/retro_page_route.dart';
-import 'package:seniors_27/features/auth/login_otp_screen.dart';
+import 'package:seniors_27/features/auth/data/auth_api_service.dart';
+import 'package:seniors_27/features/auth/login_otp_screen.dart'
+    show LoginOtpScreen, OtpVerifier, defaultVerifyOtp;
 import 'package:seniors_27/features/auth/widgets/login_progress.dart';
 import 'package:seniors_27/features/auth/widgets/retro_validation_message.dart';
 import 'package:seniors_27/shared/widgets/app_logo.dart';
@@ -26,14 +30,45 @@ enum EmailAuthStatus {
 typedef EmailOtpRequester = Future<EmailAuthStatus> Function(String email);
 
 Future<EmailAuthStatus> requestOtp(String email) async {
-  await Future<void>.delayed(const Duration(milliseconds: 500));
-  return EmailAuthStatus.otpSent;
+  final api = AuthApiService(ApiClient());
+  try {
+    final response = await api.login(email);
+    final data = response.data;
+    if (data is Map) {
+      return switch (data['status'] as String?) {
+        'otpSent' => EmailAuthStatus.otpSent,
+        'pendingApproval' => EmailAuthStatus.pendingApproval,
+        'deletedOrInactive' => EmailAuthStatus.deletedOrInactive,
+        'rejected' => EmailAuthStatus.rejected,
+        _ => EmailAuthStatus.otpSent,
+      };
+    }
+    return EmailAuthStatus.otpSent;
+  } on ApiException catch (e) {
+    final data = e.data;
+    if (data is Map) {
+      return switch (data['status'] as String?) {
+        'pendingApproval' => EmailAuthStatus.pendingApproval,
+        'deletedOrInactive' => EmailAuthStatus.deletedOrInactive,
+        'rejected' => EmailAuthStatus.rejected,
+        _ => EmailAuthStatus.error,
+      };
+    }
+    return EmailAuthStatus.error;
+  } catch (_) {
+    return EmailAuthStatus.error;
+  }
 }
 
 class LoginEmailScreen extends StatefulWidget {
-  const LoginEmailScreen({this.otpRequester = requestOtp, super.key});
+  const LoginEmailScreen({
+    this.otpRequester = requestOtp,
+    this.otpVerifier,
+    super.key,
+  });
 
   final EmailOtpRequester otpRequester;
+  final OtpVerifier? otpVerifier;
 
   @override
   State<LoginEmailScreen> createState() => _LoginEmailScreenState();
@@ -120,14 +155,22 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
     if (!mounted) {
       return;
     }
-    Navigator.of(
-      context,
-    ).push(RetroPageRoute<void>(builder: (_) => LoginOtpScreen(email: email)));
+    Navigator.of(context).push(
+      RetroPageRoute<void>(
+        builder: (_) => LoginOtpScreen(
+          email: email,
+          verifier: widget.otpVerifier ?? defaultVerifyOtp,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: RetroGridBackground(
         child: Stack(
           children: [
@@ -151,112 +194,129 @@ class _LoginEmailScreenState extends State<LoginEmailScreen> {
               ),
             ),
             const Positioned(bottom: 164, right: 67, child: _OutlinedDot()),
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 28),
-                child: RetroCard(
-                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
-                  shadowOffset: const Offset(6, 8),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'LOGIN',
-                        style: Theme.of(context).textTheme.headlineMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Welcome back. Move step by step.',
-                        style: TextStyle(fontFamily: 'monospace', fontSize: 8),
-                      ),
-                      const SizedBox(height: 20),
-                      const LoginProgress(step: 1),
-                      const SizedBox(height: 40),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AppColors.ink, width: 2.5),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'EMAIL',
-                              style: Theme.of(context).textTheme.titleLarge,
+            Align(
+              alignment: Alignment.topCenter,
+              child: SafeArea(
+                bottom: false,
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(28, 50, 28, bottomInset + 20),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 400),
+                    child: RetroCard(
+                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
+                      shadowOffset: const Offset(6, 8),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'LOGIN',
+                            style: Theme.of(context).textTheme.headlineMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Welcome back. Move step by step.',
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 8,
                             ),
-                            const SizedBox(height: 7),
-                            const Text(
-                              'Type your email then continue.',
-                              style: TextStyle(
-                                fontFamily: 'monospace',
-                                fontSize: 8,
+                          ),
+                          const SizedBox(height: 20),
+                          const LoginProgress(step: 1),
+                          const SizedBox(height: 40),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: AppColors.ink,
+                                width: 2.5,
                               ),
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                            const SizedBox(height: 18),
-                            const Text(
-                              'EMAIL',
-                              style: TextStyle(
-                                fontFamily: 'monospace',
-                                fontSize: 8,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 17),
-                            RetroTextField(
-                              controller: _emailController,
-                              keyboardType: TextInputType.emailAddress,
-                              hintText: 'you@email.com',
-                              onChanged: (_) {
-                                setState(() {
-                                  _hasInteracted = true;
-                                  _status = EmailAuthStatus.idle;
-                                });
-                              },
-                            ),
-                            if (_emailError case final error?)
-                              RetroValidationMessage(message: error),
-                            if (_emailError == null)
-                              if (_statusMessage case final message?)
-                                RetroValidationMessage(
-                                  message: message,
-                                  backgroundColor: _statusColor,
-                                  uppercase: false,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'EMAIL',
+                                  style: Theme.of(context).textTheme.titleLarge,
                                 ),
-                            const SizedBox(height: 13),
-                            Align(
-                              alignment: Alignment.center,
-                              child: SizedBox(
-                                width: 112,
-                                child: RetroButton(
-                                  label: _isLoading ? 'Sending...' : 'Send OTP',
-                                  height: 32,
-                                  shadowOffset: const Offset(4, 4),
-                                  textStyle: const TextStyle(
-                                    color: AppColors.ink,
+                                const SizedBox(height: 7),
+                                const Text(
+                                  'Type your email then continue.',
+                                  style: TextStyle(
                                     fontFamily: 'monospace',
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
+                                    fontSize: 8,
                                   ),
-                                  onPressed: _isLoading ? null : _continueToOtp,
                                 ),
-                              ),
+                                const SizedBox(height: 18),
+                                const Text(
+                                  'EMAIL',
+                                  style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 17),
+                                RetroTextField(
+                                  controller: _emailController,
+                                  keyboardType: TextInputType.emailAddress,
+                                  hintText: 'you@email.com',
+                                  onChanged: (_) {
+                                    setState(() {
+                                      _hasInteracted = true;
+                                      _status = EmailAuthStatus.idle;
+                                    });
+                                  },
+                                ),
+                                if (_emailError case final error?)
+                                  RetroValidationMessage(message: error),
+                                if (_emailError == null)
+                                  if (_statusMessage case final message?)
+                                    RetroValidationMessage(
+                                      message: message,
+                                      backgroundColor: _statusColor,
+                                      uppercase: false,
+                                    ),
+                                const SizedBox(height: 13),
+                                Align(
+                                  alignment: Alignment.center,
+                                  child: SizedBox(
+                                    width: 112,
+                                    child: RetroButton(
+                                      label: _isLoading
+                                          ? 'Sending...'
+                                          : 'Send OTP',
+                                      height: 32,
+                                      shadowOffset: const Offset(4, 4),
+                                      textStyle: const TextStyle(
+                                        color: AppColors.ink,
+                                        fontFamily: 'monospace',
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                      onPressed: _isLoading
+                                          ? null
+                                          : _continueToOtp,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'CURRENT: EMAIL',
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              color: AppColors.muted,
+                              fontSize: 8,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'CURRENT: EMAIL',
-                        style: TextStyle(
-                          fontFamily: 'monospace',
-                          color: AppColors.muted,
-                          fontSize: 8,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),

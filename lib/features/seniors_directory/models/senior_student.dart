@@ -6,6 +6,7 @@ class SeniorStudent {
   final List<String> tags;
   final int points;
   final int memoriesCount;
+  final String? photoUrl;
 
   const SeniorStudent({
     required this.id,
@@ -15,5 +16,21 @@ class SeniorStudent {
     this.tags = const [],
     this.points = 0,
     this.memoriesCount = 0,
+    this.photoUrl,
   });
+
+  factory SeniorStudent.fromJson(Map<String, dynamic> json) {
+    return SeniorStudent(
+      id: (json['id'] as num?)?.toString() ?? json['id'] as String? ?? '',
+      name: json['username'] as String? ?? json['name'] as String? ?? '',
+      role: json['role'] as String? ?? 'Senior Student',
+      department: json['department'] as String? ?? 'DEV',
+      tags:
+          (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+          const [],
+      points: (json['points'] as num?)?.toInt() ?? 0,
+      memoriesCount: (json['memoriesCount'] as num?)?.toInt() ?? 0,
+      photoUrl: json['photoUrl'] as String?,
+    );
+  }
 }
