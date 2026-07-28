@@ -13,6 +13,7 @@ import 'package:seniors_27/features/profile/data/profile_gallery_api_service.dar
 import 'package:seniors_27/features/profile/models/profile_gallery_photo.dart';
 import 'package:seniors_27/features/profile/models/profile_user.dart';
 import 'package:seniors_27/features/profile/models/social_link.dart';
+import 'package:seniors_27/features/profile/favorite_song_screen.dart';
 import 'package:seniors_27/features/profile/social_links_screen.dart';
 import 'package:seniors_27/shared/widgets/note_card.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
@@ -20,6 +21,7 @@ import 'package:seniors_27/shared/widgets/retro_section_header.dart';
 import 'package:seniors_27/shared/widgets/retro_sticker.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:seniors_27/features/profile/widgets/spotify_preview.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({required this.onOpenNotes, super.key});
@@ -264,6 +266,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _openFavoriteSongEditor() async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) =>
+            FavoriteSongScreen(initialEmbedUrl: _user.favoriteSongEmbedUrl),
+      ),
+    );
+    if (result == true && mounted) {
+      _loadProfile();
+    }
+  }
+
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -461,12 +475,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSocialAndSpotify() {
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: _buildSocialLinks()),
-        const SizedBox(width: 12),
-        Expanded(child: _buildSpotifyCard()),
+        _buildSocialLinks(),
+        const SizedBox(height: 20),
+        _buildSpotifyCard(),
       ],
     );
   }
@@ -545,90 +559,110 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSpotifyCard() {
+    final embedUrl = _user.favoriteSongEmbedUrl;
+    final hasSong = embedUrl != null && embedUrl.isNotEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'SPOTIFY',
-          style: TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: AppColors.muted,
-            letterSpacing: 1.5,
-          ),
-        ),
-        const SizedBox(height: 10),
-        RetroCard(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.magenta,
-                  border: Border.all(color: AppColors.ink, width: 1.5),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.music_note,
-                  size: 22,
-                  color: AppColors.paper,
-                ),
+        Row(
+          children: [
+            const Text(
+              'SPOTIFY',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppColors.muted,
+                letterSpacing: 1.5,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Blinding Lights',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'The Weeknd',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 8,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.muted,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.pink,
-                        border: Border.all(color: AppColors.ink, width: 1.5),
-                      ),
-                      child: const Text(
-                        'DISCONNECT',
-                        style: TextStyle(
-                          fontSize: 7,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.paper,
-                        ),
-                      ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              onTap: _openFavoriteSongEditor,
+              child: Container(
+                width: 28,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: AppColors.paper,
+                  border: Border.all(color: AppColors.ink, width: 1.5),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: AppColors.ink,
+                      offset: Offset(1.5, 1.5),
+                      blurRadius: 0,
                     ),
                   ],
                 ),
+                alignment: Alignment.center,
+                child: const Icon(Icons.edit, size: 13, color: AppColors.ink),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+        const SizedBox(height: 10),
+        if (hasSong)
+          RetroCard(
+            padding: const EdgeInsets.all(12),
+            child: SpotifyPreview(embedUrl: embedUrl),
+          )
+        else
+          _buildEmptyPlayer(),
       ],
+    );
+  }
+
+  Widget _buildEmptyPlayer() {
+    return GestureDetector(
+      onTap: _openFavoriteSongEditor,
+      child: RetroCard(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1DB954),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              alignment: Alignment.center,
+              child: const FaIcon(
+                FontAwesomeIcons.spotify,
+                size: 22,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'No favorite song yet.',
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.ink,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1DB954),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                'ADD',
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

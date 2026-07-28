@@ -41,4 +41,7 @@ class ApiConstants {
 
   // Social Links
   static const String socialLinks = '/api/Auth/me/social-links';
+
+  // Favorite Song
+  static const String favoriteSong = '/api/Auth/me/favorite-song';
 }
