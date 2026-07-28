@@ -93,85 +93,19 @@ class _NotesOpenBookScreenState extends State<NotesOpenBookScreen> {
   }
 
   Future<void> _toggleReaction(Note note, String type) async {
-    final isCurrentlyReacted = type == 'Ahaha'
-        ? note.likedByMe
-        : note.lovedByMe;
-    final newLiked = type == 'Ahaha' ? !note.likedByMe : note.likedByMe;
-    final newLoved = type == 'Love' ? !note.lovedByMe : note.lovedByMe;
-    final newLikeCount = type == 'Ahaha'
-        ? (note.likeCount ?? 0) + (isCurrentlyReacted ? -1 : 1)
-        : note.likeCount;
-    final newLoveCount = type == 'Love'
-        ? (note.loveCount ?? 0) + (isCurrentlyReacted ? -1 : 1)
-        : note.loveCount;
-
-    setState(() {
-      final idx = _notes.indexWhere((n) => n.id == note.id);
-      if (idx >= 0) {
-        _notes[idx] = _notes[idx].copyWith(
-          likedByMe: newLiked,
-          lovedByMe: newLoved,
-          likeCount: newLikeCount != null && newLikeCount < 0
-              ? 0
-              : newLikeCount,
-          loveCount: newLoveCount != null && newLoveCount < 0
-              ? 0
-              : newLoveCount,
-        );
-      }
-    });
-
     try {
       final res = await _api.addReaction(note.id, type);
-      debugPrint('[Notes] reaction status: ${res.statusCode}');
-      debugPrint('[Notes] reaction response type: ${res.data.runtimeType}');
       if (res.data is Map) {
-        debugPrint(
-          '[Notes] reaction response keys: ${(res.data as Map).keys.toList()}',
-        );
-      }
-      debugPrint('[Notes] reaction data: ${res.data}');
-
-      if (res.data is Map) {
-        final data = res.data as Map;
-        final serverLikeCount = data['likeCount'] ?? data['likesCount'];
-        final serverLoveCount = data['loveCount'] ?? data['lovesCount'];
-        final serverLiked = data['likedByMe'] ?? data['isLikedByMe'];
-        final serverLoved = data['lovedByMe'] ?? data['isLovedByMe'];
-        if (serverLikeCount != null ||
-            serverLoveCount != null ||
-            serverLiked != null ||
-            serverLoved != null) {
-          setState(() {
-            final idx = _notes.indexWhere((n) => n.id == note.id);
-            if (idx >= 0) {
-              _notes[idx] = _notes[idx].copyWith(
-                likedByMe: serverLiked as bool? ?? _notes[idx].likedByMe,
-                lovedByMe: serverLoved as bool? ?? _notes[idx].lovedByMe,
-                likeCount: serverLikeCount is num
-                    ? serverLikeCount.toInt()
-                    : _notes[idx].likeCount,
-                loveCount: serverLoveCount is num
-                    ? serverLoveCount.toInt()
-                    : _notes[idx].loveCount,
-              );
-            }
-          });
-        }
+        final updated = Note.fromJson(res.data as Map<String, dynamic>);
+        setState(() {
+          final idx = _notes.indexWhere((n) => n.id == note.id);
+          if (idx >= 0) {
+            _notes[idx] = updated;
+          }
+        });
       }
     } catch (e) {
       debugPrint('[Notes] reaction error: $e');
-      setState(() {
-        final idx = _notes.indexWhere((n) => n.id == note.id);
-        if (idx >= 0) {
-          _notes[idx] = _notes[idx].copyWith(
-            likedByMe: note.likedByMe,
-            lovedByMe: note.lovedByMe,
-            likeCount: note.likeCount,
-            loveCount: note.loveCount,
-          );
-        }
-      });
       if (mounted) {
         ScaffoldMessenger.of(
           context,

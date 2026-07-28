@@ -26,7 +26,7 @@ class NotesApiService {
   Future<Response> addReaction(String noteId, String reactionType) {
     return _client.post(
       ApiConstants.noteReactions(noteId),
-      data: {'reactionType': reactionType},
+      data: {'type': reactionType},
     );
   }
 
