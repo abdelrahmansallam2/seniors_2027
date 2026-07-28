@@ -7,14 +7,22 @@ import 'package:seniors_27/shared/widgets/retro_card.dart';
 import 'package:seniors_27/shared/widgets/retro_text_field.dart';
 
 class AddMemorySheet extends StatefulWidget {
-  const AddMemorySheet({super.key});
+  final Future<void> Function(String filePath, String? description)?
+  onMemorySubmitted;
 
-  static Future<void> show(BuildContext context) {
+  const AddMemorySheet({super.key, this.onMemorySubmitted});
+
+  static Future<void> show(
+    BuildContext context, {
+    Future<void> Function(String filePath, String? description)?
+    onMemorySubmitted,
+  }) {
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => const AddMemorySheet(),
+      builder: (context) =>
+          AddMemorySheet(onMemorySubmitted: onMemorySubmitted),
     );
   }
 
@@ -26,6 +34,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
   final ImagePicker _picker = ImagePicker();
   XFile? _image;
   final TextEditingController _descriptionController = TextEditingController();
+  bool _isSubmitting = false;
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -41,6 +50,37 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
           context,
         ).showSnackBar(SnackBar(content: Text('Error picking image: $e')));
       }
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_image == null || _isSubmitting) return;
+    setState(() => _isSubmitting = true);
+    try {
+      await widget.onMemorySubmitted?.call(
+        _image!.path,
+        _descriptionController.text,
+      );
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Memory submitted for approval.'),
+            backgroundColor: AppColors.ink,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error submitting memory: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -154,20 +194,10 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
             SizedBox(
               width: double.infinity,
               child: RetroButton(
-                label: 'SUBMIT MEMORY',
+                label: _isSubmitting ? 'SUBMITTING...' : 'SUBMIT MEMORY',
                 height: 54,
                 backgroundColor: AppColors.pink,
-                onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Memory submitted locally. API integration later.',
-                      ),
-                      backgroundColor: AppColors.ink,
-                    ),
-                  );
-                },
+                onPressed: _isSubmitting ? null : _submit,
                 textStyle: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w900,

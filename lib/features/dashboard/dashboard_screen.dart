@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:seniors_27/core/api/api_client.dart';
+import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/constants/app_assets.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
-import 'package:seniors_27/features/dashboard/data/mock_announcements.dart';
+import 'package:seniors_27/features/dashboard/data/daily_highlights_api_service.dart';
+import 'package:seniors_27/features/dashboard/data/dashboard_api_service.dart';
 import 'package:seniors_27/features/dashboard/models/announcement.dart';
+import 'package:seniors_27/features/dashboard/models/daily_highlight.dart';
+import 'package:seniors_27/features/dashboard/models/event.dart';
 import 'package:seniors_27/features/dashboard/widgets/announcement_card.dart';
 import 'package:seniors_27/features/dashboard/widgets/challenge_poll_announcement_card.dart';
 import 'package:seniors_27/features/dashboard/widgets/challenge_preview_card.dart';
 import 'package:seniors_27/features/dashboard/widgets/challenges_empty_state.dart';
 import 'package:seniors_27/features/dashboard/widgets/countdown_board_row.dart';
 import 'package:seniors_27/features/dashboard/widgets/dashboard_upload_placeholder.dart';
+import 'package:seniors_27/features/dashboard/widgets/event_card.dart';
 import 'package:seniors_27/features/dashboard/widgets/events_empty_state.dart';
 import 'package:seniors_27/shared/widgets/add_memory_sheet.dart';
 import 'package:seniors_27/shared/widgets/app_logo.dart';
@@ -19,10 +25,133 @@ import 'package:seniors_27/shared/widgets/retro_card.dart';
 import 'package:seniors_27/shared/widgets/retro_section_header.dart';
 import 'package:seniors_27/shared/widgets/retro_sticker.dart';
 
-class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({required this.onOpenNotes, super.key});
+class DashboardScreen extends StatefulWidget {
+  const DashboardScreen({
+    required this.onOpenNotes,
+    this.apiService,
+    super.key,
+  });
 
   final VoidCallback onOpenNotes;
+  final DashboardApiService? apiService;
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  late final DashboardApiService _api =
+      widget.apiService ?? DashboardApiService(ApiClient());
+  late final DailyHighlightsApiService _highlightsApi =
+      DailyHighlightsApiService(ApiClient());
+
+  List<Announcement> _announcements = [];
+  List<Event> _events = [];
+  List<DailyHighlight> _highlights = [];
+  bool _isLoading = true;
+  bool _highlightsLoading = true;
+  String? _error;
+  String? _highlightsError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+      _highlightsLoading = true;
+      _error = null;
+      _highlightsError = null;
+    });
+    try {
+      final results = await Future.wait([
+        _api.getAnnouncements(),
+        _api.getEvents(),
+        _highlightsApi.getActive(),
+      ]);
+      final announcementsData = results[0].data;
+      final eventsData = results[1].data;
+      final highlightsData = results[2].data;
+      if (!mounted) return;
+      setState(() {
+        _announcements = _parseAnnouncements(announcementsData);
+        _events = _parseEvents(eventsData);
+        _highlights = _parseHighlights(highlightsData);
+        _isLoading = false;
+        _highlightsLoading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _highlightsError = e.message;
+        _isLoading = false;
+        _highlightsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Something went wrong. Please try again.';
+        _highlightsError = 'Something went wrong. Please try again.';
+        _isLoading = false;
+        _highlightsLoading = false;
+      });
+    }
+  }
+
+  List<Announcement> _parseAnnouncements(dynamic data) {
+    if (data is List) {
+      return data
+          .map((item) => Announcement.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  List<Event> _parseEvents(dynamic data) {
+    if (data is List) {
+      return data
+          .map((item) => Event.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  List<DailyHighlight> _parseHighlights(dynamic data) {
+    if (data is List) {
+      return data
+          .map((item) => DailyHighlight.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<void> _handleAddHighlight(String filePath, String? description) async {
+    await _highlightsApi.upload(filePath: filePath, description: description);
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Highlight submitted.')));
+      _loadHighlights();
+    }
+  }
+
+  Future<void> _loadHighlights() async {
+    setState(() => _highlightsLoading = true);
+    try {
+      final response = await _highlightsApi.getActive();
+      if (!mounted) return;
+      setState(() {
+        _highlights = _parseHighlights(response.data);
+        _highlightsLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _highlightsLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,16 +186,110 @@ class DashboardScreen extends StatelessWidget {
               const SizedBox(height: 28),
               const _DashboardHeroCard(),
               const SizedBox(height: 26),
-              const _DailyHighlightsSection(),
+              _DailyHighlightsSection(
+                highlights: _highlights,
+                isLoading: _highlightsLoading,
+                error: _highlightsError,
+                onAddToday: () => AddMemorySheet.show(
+                  context,
+                  onMemorySubmitted: _handleAddHighlight,
+                ),
+                onRetry: _loadData,
+              ),
               const SizedBox(height: 26),
-              const _AnnouncementsSection(),
+              _buildAnnouncementsSection(),
               const SizedBox(height: 26),
-              const _UpcomingEventsSection(),
+              _buildUpcomingEventsSection(),
               const SizedBox(height: 26),
               const _ChallengesPreviewSection(),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildAnnouncementsSection() {
+    if (_isLoading) {
+      return _buildLoadingSection('ANNOUNCEMENTS', AppColors.magenta);
+    }
+    if (_error != null) {
+      return _buildErrorSection('ANNOUNCEMENTS', AppColors.magenta);
+    }
+    return _AnnouncementsSection(announcements: _announcements);
+  }
+
+  Widget _buildUpcomingEventsSection() {
+    if (_isLoading) {
+      return _buildLoadingSection('UPCOMING_EVENTS', AppColors.orange);
+    }
+    if (_error != null) {
+      return _buildErrorSection('UPCOMING_EVENTS', AppColors.orange);
+    }
+    return _UpcomingEventsSection(events: _events);
+  }
+
+  Widget _buildLoadingSection(String title, Color color) {
+    return RetroCard(
+      padding: EdgeInsets.zero,
+      backgroundColor: AppColors.paper,
+      child: Column(
+        children: [
+          RetroSectionHeader(title: title, backgroundColor: color),
+          const SizedBox(height: 28),
+          const Center(
+            child: Text(
+              'Loading...',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppColors.muted,
+              ),
+            ),
+          ),
+          const SizedBox(height: 28),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorSection(String title, Color color) {
+    return RetroCard(
+      padding: EdgeInsets.zero,
+      backgroundColor: AppColors.paper,
+      child: Column(
+        children: [
+          RetroSectionHeader(title: title, backgroundColor: color),
+          const SizedBox(height: 14),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 18),
+            child: Text(
+              'Could not load data.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppColors.muted,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: 90,
+            child: RetroButton(
+              label: 'Retry',
+              height: 32,
+              onPressed: _loadData,
+              textStyle: const TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 10,
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
       ),
     );
   }
@@ -163,7 +386,19 @@ class _DashboardHeroCard extends StatelessWidget {
 }
 
 class _DailyHighlightsSection extends StatelessWidget {
-  const _DailyHighlightsSection();
+  const _DailyHighlightsSection({
+    required this.highlights,
+    required this.isLoading,
+    required this.error,
+    required this.onAddToday,
+    required this.onRetry,
+  });
+
+  final List<DailyHighlight> highlights;
+  final bool isLoading;
+  final String? error;
+  final VoidCallback onAddToday;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -182,7 +417,7 @@ class _DailyHighlightsSection extends StatelessWidget {
             child: RetroButton(
               label: 'ADD TODAY',
               height: 34,
-              onPressed: () => AddMemorySheet.show(context),
+              onPressed: onAddToday,
               textStyle: const TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w900,
@@ -190,6 +425,56 @@ class _DailyHighlightsSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
+          _buildContent(context),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
+    if (isLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20),
+        child: DashboardUploadPlaceholder(),
+      );
+    }
+
+    if (error != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          children: [
+            const Text(
+              'Could not load highlights.',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                color: AppColors.muted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: 80,
+              child: RetroButton(
+                label: 'Retry',
+                height: 28,
+                onPressed: onRetry,
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 9,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (highlights.isEmpty) {
+      return Column(
+        children: [
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: DashboardUploadPlaceholder(),
@@ -231,18 +516,101 @@ class _DailyHighlightsSection extends StatelessWidget {
             ),
           ),
         ],
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: SizedBox(
+        height: 170,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: highlights.length,
+          separatorBuilder: (context, index) => const SizedBox(width: 10),
+          itemBuilder: (context, index) {
+            final h = highlights[index];
+            return _HighlightPolaroid(highlight: h);
+          },
+        ),
       ),
     );
   }
 }
 
-class _AnnouncementsSection extends StatelessWidget {
-  const _AnnouncementsSection();
+class _HighlightPolaroid extends StatelessWidget {
+  const _HighlightPolaroid({required this.highlight});
+
+  final DailyHighlight highlight;
 
   @override
   Widget build(BuildContext context) {
-    final announcements = mockAnnouncements;
+    return SizedBox(
+      width: 130,
+      child: Column(
+        children: [
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 30),
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                border: Border.all(color: AppColors.ink, width: 2.5),
+                boxShadow: const [
+                  BoxShadow(
+                    color: AppColors.ink,
+                    offset: Offset(4, 4),
+                    blurRadius: 0,
+                  ),
+                ],
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEEEEEE),
+                  border: Border.all(color: AppColors.ink, width: 1.2),
+                ),
+                child: Center(
+                  child: Text(
+                    _formatAuthor(highlight.authorName),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 7,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            highlight.date,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 7,
+              fontWeight: FontWeight.w600,
+              color: AppColors.muted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
+  String _formatAuthor(String name) {
+    if (name.isEmpty) return 'Today\'s memory';
+    return name;
+  }
+}
+
+class _AnnouncementsSection extends StatelessWidget {
+  const _AnnouncementsSection({required this.announcements});
+
+  final List<Announcement> announcements;
+
+  @override
+  Widget build(BuildContext context) {
     return RetroCard(
       padding: EdgeInsets.zero,
       backgroundColor: AppColors.paper,
@@ -339,30 +707,44 @@ class _AnnouncementsEmptyState extends StatelessWidget {
 }
 
 class _UpcomingEventsSection extends StatelessWidget {
-  const _UpcomingEventsSection();
+  const _UpcomingEventsSection({required this.events});
+
+  final List<Event> events;
 
   @override
   Widget build(BuildContext context) {
     return RetroCard(
       padding: EdgeInsets.zero,
       backgroundColor: AppColors.paper,
-      child: const Column(
+      child: Column(
         children: [
-          RetroSectionHeader(
+          const RetroSectionHeader(
             title: 'UPCOMING_EVENTS',
             backgroundColor: AppColors.orange,
           ),
-          SizedBox(height: 18),
+          const SizedBox(height: 18),
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 18),
-            child: CountdownBoardRow(count: 0),
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: CountdownBoardRow(count: events.length),
           ),
-          SizedBox(height: 12),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 18),
-            child: EventsEmptyState(),
-          ),
-          SizedBox(height: 18),
+          const SizedBox(height: 12),
+          if (events.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 18),
+              child: EventsEmptyState(),
+            )
+          else
+            ...events.map(
+              (event) => Padding(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+                child: EventCard(
+                  title: event.title,
+                  description: event.description,
+                  date: event.date,
+                ),
+              ),
+            ),
+          const SizedBox(height: 18),
         ],
       ),
     );
