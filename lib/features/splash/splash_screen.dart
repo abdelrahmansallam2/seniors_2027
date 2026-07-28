@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/core/navigation/retro_page_route.dart';
+import 'package:seniors_27/core/storage/token_storage.dart';
+import 'package:seniors_27/features/app_shell/main_app_shell.dart';
 import 'package:seniors_27/features/auth/login_email_screen.dart';
 import 'package:seniors_27/shared/widgets/app_logo.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
@@ -62,6 +64,7 @@ class _SplashScreenState extends State<SplashScreen>
       duration: const Duration(milliseconds: 1150),
       vsync: this,
     );
+    _memoryController.addStatusListener(_onMemoryStatus);
     _memoryLogoOpacity = CurvedAnimation(
       parent: _memoryController,
       curve: const Interval(0, 0.24, curve: Curves.easeOut),
@@ -151,12 +154,30 @@ class _SplashScreenState extends State<SplashScreen>
     _memoryController.forward();
   }
 
+  void _onMemoryStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed || !mounted) return;
+    _checkSessionAndRedirect();
+  }
+
+  Future<void> _checkSessionAndRedirect() async {
+    final token = await TokenStorage().readToken();
+    if (!mounted) return;
+    if (token != null && token.isNotEmpty) {
+      Navigator.of(context).pushAndRemoveUntil(
+        RetroPageRoute<void>(builder: (_) => const MainAppShell()),
+        (route) => false,
+      );
+    }
+  }
+
   @override
   void dispose() {
     _logoStageController
       ..removeStatusListener(_onLogoStageStatus)
       ..dispose();
-    _memoryController.dispose();
+    _memoryController
+      ..removeStatusListener(_onMemoryStatus)
+      ..dispose();
     super.dispose();
   }
 
