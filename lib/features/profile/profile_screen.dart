@@ -21,6 +21,7 @@ import 'package:seniors_27/shared/widgets/retro_section_header.dart';
 import 'package:seniors_27/shared/widgets/retro_sticker.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:seniors_27/features/profile/widgets/profile_gallery_card.dart';
 import 'package:seniors_27/features/profile/widgets/spotify_preview.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -856,8 +857,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildGallerySection() {
-    final int stackCount = _galleryPhotos.length.clamp(0, 5);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -871,129 +870,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        RetroCard(
-          child: SizedBox(
-            width: double.infinity,
-            child: _galleryLoading
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Center(
-                      child: Text(
-                        'Loading gallery...',
-                        style: TextStyle(
-                          color: AppColors.muted,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  )
-                : _galleryError != null
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Column(
-                      children: [
-                        Text(
-                          _galleryError!,
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        GestureDetector(
-                          onTap: () => _loadGallery(_user.id),
-                          child: const Text(
-                            'TAP TO RETRY',
-                            style: TextStyle(
-                              color: AppColors.orange,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : _galleryPhotos.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Center(
-                      child: Text(
-                        'No photos yet.',
-                        style: TextStyle(
-                          color: AppColors.muted,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  )
-                : GestureDetector(
-                    onTap: () => _showGalleryViewer(
-                      context,
-                      _galleryPhotos,
-                      initialIndex: 0,
-                    ),
-                    child: Center(
-                      child: SizedBox(
-                        width: 180,
-                        height: 220,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: List.generate(stackCount, (i) {
-                            final photo = _galleryPhotos[i];
-                            final int behindCount = stackCount - 1 - i;
-                            final double offsetDx = behindCount * -8.0;
-                            final double offsetDy = behindCount * -10.0;
-                            final double rotation = behindCount.isEven
-                                ? 0.08
-                                : -0.08;
-                            final double scale = 1.0 - behindCount * 0.02;
-
-                            return Positioned(
-                              left: 20 + offsetDx,
-                              top: 10 + offsetDy,
-                              child: Transform.rotate(
-                                angle: rotation,
-                                child: Transform.scale(
-                                  scale: scale,
-                                  child: Container(
-                                    width: 140,
-                                    height: 180,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.paper,
-                                      border: Border.all(
-                                        color: AppColors.ink,
-                                        width: 2,
-                                      ),
-                                      boxShadow: const [
-                                        BoxShadow(
-                                          color: AppColors.ink,
-                                          offset: Offset(3, 3),
-                                          blurRadius: 0,
-                                        ),
-                                      ],
-                                    ),
-                                    padding: const EdgeInsets.all(4),
-                                    child: ClipRect(
-                                      child: Image.network(
-                                        photo.photoUrl ?? '',
-                                        width: 132,
-                                        height: 172,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, _, _) =>
-                                            const _PhotoPlaceholder(),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-                    ),
-                  ),
-          ),
+        ProfileGalleryCard(
+          photos: _galleryPhotos,
+          isLoading: _galleryLoading,
+          errorMessage: _galleryError,
+          onOpenGallery: () =>
+              _showGalleryViewer(context, _galleryPhotos, initialIndex: 0),
+          onRetry: () => _loadGallery(_user.id),
         ),
       ],
     );
@@ -1091,6 +974,7 @@ class _GalleryViewerSheetState extends State<_GalleryViewerSheet> {
               ),
               Container(
                 padding: const EdgeInsets.only(bottom: 24, top: 8),
+                color: Colors.black.withValues(alpha: 0.5),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
