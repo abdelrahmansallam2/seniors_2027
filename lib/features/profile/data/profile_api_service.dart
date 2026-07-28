@@ -15,4 +15,8 @@ class ProfileApiService {
   Future<Response> updateSocialLinks(List<String> urls) {
     return _client.put(ApiConstants.socialLinks, data: {'links': urls});
   }
+
+  Future<Response> updateFavoriteSong(String embedUrl) {
+    return _client.put(ApiConstants.favoriteSong, data: {'input': embedUrl});
+  }
 }

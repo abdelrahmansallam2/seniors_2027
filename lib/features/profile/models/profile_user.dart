@@ -8,6 +8,7 @@ class ProfileUser {
   final String? photoUrl;
   final int? points;
   final String? status;
+  final String? favoriteSongEmbedUrl;
 
   const ProfileUser({
     required this.id,
@@ -19,6 +20,7 @@ class ProfileUser {
     this.photoUrl,
     this.points,
     this.status,
+    this.favoriteSongEmbedUrl,
   });
 
   factory ProfileUser.fromJson(Map<String, dynamic> json) {
@@ -32,6 +34,32 @@ class ProfileUser {
       photoUrl: json['photoUrl'] as String?,
       points: (json['points'] as num?)?.toInt(),
       status: json['status'] as String?,
+      favoriteSongEmbedUrl: json['favoriteSongEmbedUrl'] as String?,
     );
   }
+}
+
+class SpotifyTrackInfo {
+  final String trackId;
+
+  const SpotifyTrackInfo({required this.trackId});
+
+  static SpotifyTrackInfo? fromUrl(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) return null;
+    if (!uri.host.contains('spotify.com')) return null;
+
+    final segments = uri.pathSegments;
+    final clean = segments.where((s) => s != 'embed').toList();
+    if (clean.length != 2 || clean[0] != 'track') return null;
+
+    final trackId = clean[1];
+    if (trackId.isEmpty) return null;
+
+    return SpotifyTrackInfo(trackId: trackId);
+  }
+
+  String toEmbedUrl() => 'https://open.spotify.com/embed/track/$trackId';
+
+  String toOpenUrl() => 'https://open.spotify.com/track/$trackId';
 }
