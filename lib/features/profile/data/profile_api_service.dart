@@ -11,4 +11,8 @@ class ProfileApiService {
   Future<Response> getMe() {
     return _client.get(ApiConstants.me);
   }
+
+  Future<Response> updateSocialLinks(List<String> urls) {
+    return _client.put(ApiConstants.socialLinks, data: {'links': urls});
+  }
 }

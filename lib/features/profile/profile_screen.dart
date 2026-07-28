@@ -3,17 +3,23 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
+import 'package:seniors_27/core/storage/token_storage.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
+import 'package:seniors_27/features/auth/login_email_screen.dart';
 import 'package:seniors_27/features/notes/data/notes_api_service.dart';
 import 'package:seniors_27/features/notes/models/note.dart';
 import 'package:seniors_27/features/profile/data/profile_api_service.dart';
 import 'package:seniors_27/features/profile/data/profile_gallery_api_service.dart';
 import 'package:seniors_27/features/profile/models/profile_gallery_photo.dart';
 import 'package:seniors_27/features/profile/models/profile_user.dart';
+import 'package:seniors_27/features/profile/models/social_link.dart';
+import 'package:seniors_27/features/profile/social_links_screen.dart';
 import 'package:seniors_27/shared/widgets/note_card.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
 import 'package:seniors_27/shared/widgets/retro_section_header.dart';
 import 'package:seniors_27/shared/widgets/retro_sticker.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({required this.onOpenNotes, super.key});
@@ -36,6 +42,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<ProfileGalleryPhoto> _galleryPhotos = [];
   bool _galleryLoading = true;
   String? _galleryError;
+
+  List<String> _socialLinks = [];
 
   List<Note> _latestNotes = [];
   int _totalNotesCount = 0;
@@ -65,6 +73,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (mounted) {
           setState(() {
             _user = parsed;
+            _socialLinks = _parseSocialLinks(data);
           });
           _loadGallery(parsed.id);
           _loadLatestNotes(parsed.id);
@@ -204,6 +213,118 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  static List<String> _parseSocialLinks(Map<String, dynamic> data) {
+    final raw = data['socialLinks'];
+    if (raw is List) {
+      return raw.whereType<String>().toList();
+    }
+    return [];
+  }
+
+  Future<void> _openLink(String url) async {
+    final normalized = SocialLink.normalizeUrl(url);
+    final uri = Uri.tryParse(normalized);
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      try {
+        final opened = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        if (!opened) {
+          _showLinkError();
+        }
+      } catch (_) {
+        _showLinkError();
+      }
+    }
+  }
+
+  void _showLinkError() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Could not open this link.',
+          style: TextStyle(fontFamily: 'monospace', fontSize: 12),
+        ),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<void> _openSocialLinksScreen() async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => SocialLinksScreen(
+          initialLinks: _socialLinks,
+          onSaved: _loadProfile,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.paper,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(6),
+          side: const BorderSide(color: AppColors.ink, width: 2.5),
+        ),
+        title: const Text(
+          'LOG OUT?',
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            fontSize: 16,
+            color: AppColors.ink,
+          ),
+        ),
+        content: const Text(
+          'Are you sure you want to log out?',
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: AppColors.muted,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'CANCEL',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 11,
+                color: AppColors.ink,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'LOG OUT',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 11,
+                color: AppColors.pink,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    await TokenStorage().clearToken();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginEmailScreen()),
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _user;
@@ -244,6 +365,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 20),
           _buildGallerySection(),
+          const SizedBox(height: 28),
+          _buildLogoutButton(),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -348,34 +472,74 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSocialLinks() {
+    final links = _socialLinks.map(SocialLink.fromUrl).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'SOCIAL LINKS',
-          style: TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: AppColors.muted,
-            letterSpacing: 1.5,
-          ),
+        Row(
+          children: [
+            const Text(
+              'SOCIAL LINKS',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppColors.muted,
+                letterSpacing: 1.5,
+              ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              onTap: _openSocialLinksScreen,
+              child: Container(
+                width: 28,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: AppColors.paper,
+                  border: Border.all(color: AppColors.ink, width: 1.5),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: AppColors.ink,
+                      offset: Offset(1.5, 1.5),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: const Icon(Icons.edit, size: 13, color: AppColors.ink),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 10),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              _SocialIcon(label: 'IG', color: AppColors.pink),
-              const SizedBox(width: 10),
-              _SocialIcon(label: 'GH', color: AppColors.green),
-              const SizedBox(width: 10),
-              _SocialIcon(label: 'LN', color: AppColors.cyan),
-              const SizedBox(width: 10),
-              _SocialIcon(label: 'SP', color: AppColors.orange),
-            ],
+        if (links.isEmpty)
+          const Text(
+            'No links added yet.',
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              color: AppColors.muted,
+              fontStyle: FontStyle.italic,
+            ),
+          )
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final link in links)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: GestureDetector(
+                      onTap: () => _openLink(link.url),
+                      child: _SocialIcon(platform: link.platform),
+                    ),
+                  ),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -465,6 +629,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildLogoutButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: GestureDetector(
+        onTap: _logout,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: AppColors.pink,
+            border: Border.all(color: AppColors.ink, width: 2.5),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.ink,
+                offset: Offset(4, 4),
+                blurRadius: 0,
+              ),
+            ],
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.logout, size: 16, color: AppColors.ink),
+              SizedBox(width: 8),
+              Text(
+                'LOG OUT',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.ink,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -938,10 +1141,9 @@ class _ArrowButton extends StatelessWidget {
 }
 
 class _SocialIcon extends StatelessWidget {
-  const _SocialIcon({required this.label, required this.color});
+  const _SocialIcon({required this.platform});
 
-  final String label;
-  final Color color;
+  final SocialPlatform platform;
 
   @override
   Widget build(BuildContext context) {
@@ -949,7 +1151,7 @@ class _SocialIcon extends StatelessWidget {
       width: 36,
       height: 36,
       decoration: BoxDecoration(
-        color: color,
+        color: _color,
         shape: BoxShape.circle,
         border: Border.all(color: AppColors.ink, width: 2),
         boxShadow: const [
@@ -957,15 +1159,62 @@ class _SocialIcon extends StatelessWidget {
         ],
       ),
       alignment: Alignment.center,
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.w900,
-          color: AppColors.paper,
-        ),
-      ),
+      child: FaIcon(_icon, size: 16, color: AppColors.paper),
     );
+  }
+
+  FaIconData get _icon {
+    switch (platform) {
+      case SocialPlatform.instagram:
+        return FontAwesomeIcons.instagram;
+      case SocialPlatform.facebook:
+        return FontAwesomeIcons.facebook;
+      case SocialPlatform.linkedin:
+        return FontAwesomeIcons.linkedin;
+      case SocialPlatform.spotify:
+        return FontAwesomeIcons.spotify;
+      case SocialPlatform.github:
+        return FontAwesomeIcons.github;
+      case SocialPlatform.twitter:
+        return FontAwesomeIcons.xTwitter;
+      case SocialPlatform.tiktok:
+        return FontAwesomeIcons.tiktok;
+      case SocialPlatform.youtube:
+        return FontAwesomeIcons.youtube;
+      case SocialPlatform.snapchat:
+        return FontAwesomeIcons.snapchat;
+      case SocialPlatform.discord:
+        return FontAwesomeIcons.discord;
+      case SocialPlatform.generic:
+        return FontAwesomeIcons.link;
+    }
+  }
+
+  Color get _color {
+    switch (platform) {
+      case SocialPlatform.instagram:
+        return AppColors.pink;
+      case SocialPlatform.facebook:
+        return const Color(0xFF1877F2);
+      case SocialPlatform.linkedin:
+        return const Color(0xFF0A66C2);
+      case SocialPlatform.spotify:
+        return const Color(0xFF1DB954);
+      case SocialPlatform.github:
+        return const Color(0xFF333333);
+      case SocialPlatform.twitter:
+        return const Color(0xFF000000);
+      case SocialPlatform.tiktok:
+        return const Color(0xFF010101);
+      case SocialPlatform.youtube:
+        return const Color(0xFFFF0000);
+      case SocialPlatform.snapchat:
+        return const Color(0xFFFFFC00);
+      case SocialPlatform.discord:
+        return const Color(0xFF5865F2);
+      case SocialPlatform.generic:
+        return AppColors.yellow;
+    }
   }
 }
 

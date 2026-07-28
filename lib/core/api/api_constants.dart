@@ -38,4 +38,7 @@ class ApiConstants {
 
   // Gallery
   static String galleryUser(String userId) => '/api/Gallery/user/$userId';
+
+  // Social Links
+  static const String socialLinks = '/api/Auth/me/social-links';
 }
