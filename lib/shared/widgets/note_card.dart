@@ -7,7 +7,7 @@ class NoteCard extends StatelessWidget {
     required this.date,
     required this.content,
     super.key,
-    this.senderInitial,
+    this.senderPhotoUrl,
     this.loveCount,
     this.likeCount,
     this.lovedByMe = false,
@@ -22,7 +22,7 @@ class NoteCard extends StatelessWidget {
   final String senderName;
   final String date;
   final String content;
-  final String? senderInitial;
+  final String? senderPhotoUrl;
   final int? loveCount;
   final int? likeCount;
   final bool lovedByMe;
@@ -35,9 +35,7 @@ class NoteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initial =
-        senderInitial ??
-        (senderName.isNotEmpty ? senderName[0].toUpperCase() : '?');
+    final initial = senderName.isNotEmpty ? senderName[0].toUpperCase() : '?';
 
     return Container(
       decoration: BoxDecoration(
@@ -54,24 +52,7 @@ class NoteCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
             child: Row(
               children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: AppColors.pink,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.ink, width: 2),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    initial,
-                    style: const TextStyle(
-                      color: AppColors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
+                _SenderAvatar(photoUrl: senderPhotoUrl, initial: initial),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -132,8 +113,8 @@ class NoteCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   _PillButton(
-                    icon: '👍',
-                    label: 'LIKE',
+                    icon: '😂',
+                    label: 'AHAHA',
                     count: likeCount,
                     isSelected: likedByMe,
                     selectedColor: AppColors.yellow,
@@ -165,6 +146,63 @@ class NoteCard extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _SenderAvatar extends StatelessWidget {
+  const _SenderAvatar({required this.photoUrl, required this.initial});
+
+  final String? photoUrl;
+  final String initial;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPhoto = photoUrl != null && photoUrl!.isNotEmpty;
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.ink, width: 2),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: hasPhoto
+          ? Image.network(
+              photoUrl!,
+              width: 32,
+              height: 32,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => _InitialFallback(initial: initial),
+            )
+          : _InitialFallback(initial: initial),
+    );
+  }
+}
+
+class _InitialFallback extends StatelessWidget {
+  const _InitialFallback({required this.initial});
+
+  final String initial;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: const BoxDecoration(
+        color: AppColors.pink,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: AppColors.white,
+          fontSize: 14,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }

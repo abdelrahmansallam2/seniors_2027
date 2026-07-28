@@ -93,10 +93,12 @@ class _NotesOpenBookScreenState extends State<NotesOpenBookScreen> {
   }
 
   Future<void> _toggleReaction(Note note, String type) async {
-    final isCurrentlyReacted = type == 'Like' ? note.likedByMe : note.lovedByMe;
-    final newLiked = type == 'Like' ? !note.likedByMe : note.likedByMe;
+    final isCurrentlyReacted = type == 'Ahaha'
+        ? note.likedByMe
+        : note.lovedByMe;
+    final newLiked = type == 'Ahaha' ? !note.likedByMe : note.likedByMe;
     final newLoved = type == 'Love' ? !note.lovedByMe : note.lovedByMe;
-    final newLikeCount = type == 'Like'
+    final newLikeCount = type == 'Ahaha'
         ? (note.likeCount ?? 0) + (isCurrentlyReacted ? -1 : 1)
         : note.likeCount;
     final newLoveCount = type == 'Love'
@@ -437,15 +439,17 @@ class _NotesOpenBookScreenState extends State<NotesOpenBookScreen> {
                   senderName: _notes[index].senderName.isNotEmpty
                       ? _notes[index].senderName
                       : 'Anonymous',
+                  senderPhotoUrl: _notes[index].senderPhotoUrl,
                   date: _notes[index].createdAt.isNotEmpty
                       ? _formatDate(_notes[index].createdAt)
                       : '',
                   content: _notes[index].content,
                   loveCount: _notes[index].loveCount,
+                  likeCount: _notes[index].likeCount,
                   likedByMe: _notes[index].likedByMe,
                   lovedByMe: _notes[index].lovedByMe,
                   onLove: () => _toggleReaction(_notes[index], 'Love'),
-                  onLike: () => _toggleReaction(_notes[index], 'Like'),
+                  onLike: () => _toggleReaction(_notes[index], 'Ahaha'),
                   canDelete: _canDeleteNote(_notes[index]),
                   onDelete: () => _deleteNote(_notes[index]),
                 ),

@@ -606,6 +606,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 senderName: note.senderName.isNotEmpty
                     ? note.senderName
                     : 'Anonymous',
+                senderPhotoUrl: note.senderPhotoUrl,
                 date: note.createdAt.isNotEmpty
                     ? _formatDate(note.createdAt)
                     : '',
