@@ -34,6 +34,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_svg: ^2.2.2
   image_picker: ^1.2.2
+  crop_your_image: ^2.0.0
   dio: ^5.7.0
   shared_preferences: ^2.5.3
   url_launcher: ^6.3.1

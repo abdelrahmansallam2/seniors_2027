@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 
 import '../../../core/api/api_client.dart';
@@ -18,5 +20,30 @@ class ProfileApiService {
 
   Future<Response> updateFavoriteSong(String embedUrl) {
     return _client.put(ApiConstants.favoriteSong, data: {'input': embedUrl});
+  }
+
+  Future<Response> updateDescription(String description) {
+    return _client.put(
+      '/api/Auth/me/description',
+      data: {'description': description},
+    );
+  }
+
+  Future<String> updateProfilePhoto(String filePath) async {
+    final formData = FormData.fromMap({
+      'photo': await MultipartFile.fromFile(
+        filePath,
+        filename: filePath.split(Platform.pathSeparator).last,
+      ),
+    });
+    final response = await _client.put(ApiConstants.mePhoto, data: formData);
+    final data = response.data;
+    final photoUrl = data is Map<String, dynamic>
+        ? data['photoUrl'] as String?
+        : null;
+    if (photoUrl == null || photoUrl.isEmpty) {
+      throw Exception('Profile photo URL was not returned.');
+    }
+    return photoUrl;
   }
 }

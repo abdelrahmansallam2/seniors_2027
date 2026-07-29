@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Seniors 27 uses the camera to let you take a profile photo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Seniors 27 accesses your photo library so you can choose a profile photo.</string>
 </dict>
 </plist>

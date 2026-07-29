@@ -14,6 +14,8 @@ import 'package:seniors_27/features/profile/models/profile_gallery_photo.dart';
 import 'package:seniors_27/features/profile/models/profile_user.dart';
 import 'package:seniors_27/features/profile/models/social_link.dart';
 import 'package:seniors_27/features/profile/favorite_song_screen.dart';
+import 'package:seniors_27/features/profile/edit_description_screen.dart';
+import 'package:seniors_27/features/profile/edit_profile_photo_screen.dart';
 import 'package:seniors_27/features/profile/social_links_screen.dart';
 import 'package:seniors_27/shared/widgets/note_card.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
@@ -279,6 +281,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _openDescriptionEditor() async {
+    final result = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) =>
+            EditDescriptionScreen(currentDescription: _user.description),
+      ),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _user = ProfileUser(
+          id: _user.id,
+          name: _user.name,
+          email: _user.email,
+          role: _user.role,
+          description: result,
+          gender: _user.gender,
+          photoUrl: _user.photoUrl,
+          points: _user.points,
+          status: _user.status,
+          favoriteSongEmbedUrl: _user.favoriteSongEmbedUrl,
+        );
+      });
+    }
+  }
+
+  Future<void> _openPhotoEditor() async {
+    final oldUrl = _user.photoUrl;
+    debugPrint('[Profile] oldPhotoUrl before editor: $oldUrl');
+
+    final result = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => EditProfilePhotoScreen(currentPhotoUrl: oldUrl),
+      ),
+    );
+    if (result != null && mounted) {
+      debugPrint('[Profile] receivedPhotoUrl: $result');
+
+      if (oldUrl != null && oldUrl.isNotEmpty) {
+        imageCache.evict(NetworkImage(oldUrl));
+      }
+
+      setState(() {
+        _user = ProfileUser(
+          id: _user.id,
+          name: _user.name,
+          email: _user.email,
+          role: _user.role,
+          description: _user.description,
+          gender: _user.gender,
+          photoUrl: result,
+          points: _user.points,
+          status: _user.status,
+          favoriteSongEmbedUrl: _user.favoriteSongEmbedUrl,
+        );
+      });
+      debugPrint('[Profile] userUpdated: true');
+    }
+  }
+
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -392,20 +453,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        RetroCard(
-          padding: const EdgeInsets.all(6),
-          child: user.photoUrl != null && user.photoUrl!.isNotEmpty
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: Image.network(
-                    user.photoUrl!,
-                    width: 120,
-                    height: 150,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const _PhotoPlaceholder(),
-                  ),
-                )
-              : const _PhotoPlaceholder(),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            GestureDetector(
+              onTap: _openPhotoEditor,
+              child: Container(
+                width: 28,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: AppColors.paper,
+                  border: Border.all(color: AppColors.ink, width: 1.5),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: AppColors.ink,
+                      offset: Offset(1.5, 1.5),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: const Icon(Icons.edit, size: 13, color: AppColors.ink),
+              ),
+            ),
+            const SizedBox(height: 6),
+            RetroCard(
+              padding: const EdgeInsets.all(6),
+              child: user.photoUrl != null && user.photoUrl!.isNotEmpty
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: Image.network(
+                        user.photoUrl!,
+                        key: ValueKey(user.photoUrl),
+                        width: 120,
+                        height: 150,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => const _PhotoPlaceholder(),
+                      ),
+                    )
+                  : const _PhotoPlaceholder(),
+            ),
+          ],
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -442,32 +530,92 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              if (user.description.isNotEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.paper,
-                    border: Border.all(color: AppColors.ink, width: 2),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: AppColors.ink,
-                        offset: Offset(3, 3),
-                        blurRadius: 0,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  GestureDetector(
+                    onTap: _openDescriptionEditor,
+                    child: Container(
+                      width: 28,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: AppColors.paper,
+                        border: Border.all(color: AppColors.ink, width: 1.5),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: AppColors.ink,
+                            offset: Offset(1.5, 1.5),
+                            blurRadius: 0,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: Text(
-                    '"${user.description}"',
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      height: 1.4,
-                      fontStyle: FontStyle.italic,
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.edit,
+                        size: 13,
+                        color: AppColors.ink,
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(height: 8),
+                  if (user.description.isNotEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.paper,
+                        border: Border.all(color: AppColors.ink, width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: AppColors.ink,
+                            offset: Offset(3, 3),
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        '"${user.description}"',
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          height: 1.4,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    )
+                  else
+                    GestureDetector(
+                      onTap: _openDescriptionEditor,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.paper,
+                          border: Border.all(color: AppColors.ink, width: 2),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: AppColors.ink,
+                              offset: Offset(3, 3),
+                              blurRadius: 0,
+                            ),
+                          ],
+                        ),
+                        child: const Text(
+                          'No description yet.',
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            height: 1.4,
+                            color: AppColors.muted,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
@@ -961,45 +1109,42 @@ class _GalleryViewerSheetState extends State<_GalleryViewerSheet> {
                 ),
               ),
               Expanded(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Image.network(
-                      photo.photoUrl ?? '',
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, _, _) => const _PhotoPlaceholder(),
-                    ),
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.only(bottom: 24, top: 8),
-                color: Colors.black.withValues(alpha: 0.5),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                child: Stack(
                   children: [
-                    _ArrowButton(
-                      label: '<',
-                      visible: !isFirst,
-                      onTap: () => _goTo(_currentIndex - 1),
-                    ),
-                    const SizedBox(width: 24),
-                    Text(
-                      '${_currentIndex + 1} / ${photos.length}',
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: 1.2,
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 48),
+                        child: Image.network(
+                          photo.photoUrl ?? '',
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, _, _) => const _PhotoPlaceholder(),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 24),
-                    _ArrowButton(
-                      label: '>',
-                      visible: !isLast,
-                      onTap: () => _goTo(_currentIndex + 1),
-                    ),
+                    if (!isFirst)
+                      Positioned(
+                        left: 8,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: _ArrowButton(
+                            icon: Icons.chevron_left,
+                            onTap: () => _goTo(_currentIndex - 1),
+                          ),
+                        ),
+                      ),
+                    if (!isLast)
+                      Positioned(
+                        right: 8,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: _ArrowButton(
+                            icon: Icons.chevron_right,
+                            onTap: () => _goTo(_currentIndex + 1),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -1012,29 +1157,20 @@ class _GalleryViewerSheetState extends State<_GalleryViewerSheet> {
 }
 
 class _ArrowButton extends StatelessWidget {
-  const _ArrowButton({
-    required this.label,
-    required this.visible,
-    required this.onTap,
-  });
+  const _ArrowButton({required this.icon, required this.onTap});
 
-  final String label;
-  final bool visible;
+  final IconData icon;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    if (!visible) {
-      return const SizedBox(width: 40, height: 40);
-    }
-
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: AppColors.paper,
+          color: Colors.white,
           border: Border.all(color: AppColors.ink, width: 2),
           boxShadow: const [
             BoxShadow(
@@ -1045,14 +1181,7 @@ class _ArrowButton extends StatelessWidget {
           ],
         ),
         alignment: Alignment.center,
-        child: Text(
-          label,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: AppColors.ink,
-          ),
-        ),
+        child: Icon(icon, size: 20, color: AppColors.ink),
       ),
     );
   }
