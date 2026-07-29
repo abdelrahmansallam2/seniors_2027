@@ -15,6 +15,7 @@ import 'package:seniors_27/features/profile/models/profile_user.dart';
 import 'package:seniors_27/features/profile/models/social_link.dart';
 import 'package:seniors_27/features/profile/favorite_song_screen.dart';
 import 'package:seniors_27/features/profile/edit_description_screen.dart';
+import 'package:seniors_27/features/profile/edit_name_screen.dart';
 import 'package:seniors_27/features/profile/edit_profile_photo_screen.dart';
 import 'package:seniors_27/features/profile/social_links_screen.dart';
 import 'package:seniors_27/shared/widgets/note_card.dart';
@@ -281,6 +282,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _openNameEditor() async {
+    final result = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => EditNameScreen(currentName: _user.name),
+      ),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _user = ProfileUser(
+          id: _user.id,
+          name: result,
+          email: _user.email,
+          role: _user.role,
+          description: _user.description,
+          gender: _user.gender,
+          photoUrl: _user.photoUrl,
+          points: _user.points,
+          status: _user.status,
+          favoriteSongEmbedUrl: _user.favoriteSongEmbedUrl,
+        );
+      });
+    }
+  }
+
   Future<void> _openDescriptionEditor() async {
     final result = await Navigator.of(context).push<String>(
       MaterialPageRoute(
@@ -456,42 +481,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            GestureDetector(
-              onTap: _openPhotoEditor,
-              child: Container(
-                width: 28,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: AppColors.paper,
-                  border: Border.all(color: AppColors.ink, width: 1.5),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: AppColors.ink,
-                      offset: Offset(1.5, 1.5),
-                      blurRadius: 0,
-                    ),
-                  ],
-                ),
-                alignment: Alignment.center,
-                child: const Icon(Icons.edit, size: 13, color: AppColors.ink),
-              ),
-            ),
             const SizedBox(height: 6),
             RetroCard(
               padding: const EdgeInsets.all(6),
-              child: user.photoUrl != null && user.photoUrl!.isNotEmpty
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(2),
-                      child: Image.network(
-                        user.photoUrl!,
-                        key: ValueKey(user.photoUrl),
-                        width: 120,
-                        height: 150,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const _PhotoPlaceholder(),
+              child: Stack(
+                children: [
+                  user.photoUrl != null && user.photoUrl!.isNotEmpty
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(2),
+                          child: Image.network(
+                            user.photoUrl!,
+                            key: ValueKey(user.photoUrl),
+                            width: 120,
+                            height: 150,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) =>
+                                const _PhotoPlaceholder(),
+                          ),
+                        )
+                      : const _PhotoPlaceholder(),
+                  Positioned(
+                    right: 6,
+                    bottom: 6,
+                    child: GestureDetector(
+                      onTap: _openPhotoEditor,
+                      child: Container(
+                        width: 28,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: AppColors.paper,
+                          border: Border.all(color: AppColors.ink, width: 1.5),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: AppColors.ink,
+                              offset: Offset(1.5, 1.5),
+                              blurRadius: 0,
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.edit,
+                          size: 13,
+                          color: AppColors.ink,
+                        ),
                       ),
-                    )
-                  : const _PhotoPlaceholder(),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -527,6 +565,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                   height: 1.2,
+                ),
+              ),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: _openNameEditor,
+                child: Container(
+                  width: 28,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: AppColors.paper,
+                    border: Border.all(color: AppColors.ink, width: 1.5),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: AppColors.ink,
+                        offset: Offset(1.5, 1.5),
+                        blurRadius: 0,
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.edit, size: 13, color: AppColors.ink),
                 ),
               ),
               const SizedBox(height: 12),
