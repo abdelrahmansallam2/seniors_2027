@@ -22,6 +22,10 @@ class ProfileApiService {
     return _client.put(ApiConstants.favoriteSong, data: {'input': embedUrl});
   }
 
+  Future<void> updateUsername(String username) {
+    return _client.put('/api/auth/me/username', data: {'username': username});
+  }
+
   Future<Response> updateDescription(String description) {
     return _client.put(
       '/api/Auth/me/description',
