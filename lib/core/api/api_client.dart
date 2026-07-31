@@ -1,27 +1,46 @@
-import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
+import 'dart:async';
 
+import 'package:dio/dio.dart';
+
+import '../auth/session_manager.dart';
 import '../storage/token_storage.dart';
+import '../utils/app_log.dart';
 import 'api_constants.dart';
 import 'api_exception.dart';
 
 class ApiClient {
   late final Dio _dio;
   final TokenStorage _tokenStorage;
+  final SessionManager _sessionManager;
+  static final Map<String, Future<Response<dynamic>>> _inFlightGets = {};
+  static DateTime? _globalGetCooldownUntil;
 
-  ApiClient({TokenStorage? tokenStorage})
-    : _tokenStorage = tokenStorage ?? TokenStorage() {
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: ApiConstants.baseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      ),
-    );
+  ApiClient({
+    TokenStorage? tokenStorage,
+    Dio? dio,
+    SessionManager? sessionManager,
+  }) : _tokenStorage = tokenStorage ?? TokenStorage(),
+       _sessionManager = sessionManager ?? SessionManager.instance {
+    _dio =
+        dio ??
+        Dio(
+          BaseOptions(
+            baseUrl: ApiConstants.baseUrl,
+            connectTimeout: const Duration(seconds: 10),
+            receiveTimeout: const Duration(seconds: 16),
+            sendTimeout: const Duration(seconds: 30),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+          ),
+        );
+    if (dio != null) {
+      _dio.options.headers.addAll(const {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      });
+    }
 
     _dio.interceptors.add(
       InterceptorsWrapper(
@@ -30,307 +49,131 @@ class ApiClient {
           if (token != null) {
             options.headers['Authorization'] = 'Bearer $token';
           }
-          debugPrint('[API] ➡️ ${options.method} ${options.path}');
+          options.extra['_startTime'] = DateTime.now();
+          final qs = _sanitizeQuery(options.queryParameters);
+          final logPath = qs.isNotEmpty ? '${options.path}?$qs' : options.path;
+          appDebugLog('[API] ➡️ ${options.method} $logPath');
           handler.next(options);
         },
         onResponse: (response, handler) {
-          final path = response.requestOptions.path;
-          final code = response.statusCode;
           final data = response.data;
-
-          debugPrint('[API] ⬅️ $code $path');
-
-          void printFirstItem(List list, String label) {
-            if (list.isEmpty) {
-              debugPrint('[API]   $label → EMPTY list');
-              return;
-            }
-            final first = list.first;
-            if (first is Map) {
-              final keys = first.keys.toList();
-              debugPrint('[API]   $label → length=${list.length}, keys=$keys');
-              final Map<String, dynamic> safe = {};
-              for (final k in keys) {
-                final kLower = k.toString().toLowerCase();
-                if (kLower.contains('token') ||
-                    kLower.contains('password') ||
-                    kLower.contains('otp') ||
-                    kLower.contains('secret') ||
-                    kLower.contains('pin')) {
-                  safe[k.toString()] = '***';
-                } else {
-                  safe[k.toString()] = first[k];
-                }
-              }
-              debugPrint('[API]   $label → sample=$safe');
-            } else {
-              debugPrint('[API]   $label → first=$first');
-            }
-          }
-
-          void printTopLevelKeys(Map map, String label) {
-            debugPrint('[API]   $label → Map keys=${map.keys}');
-          }
-
-          if (path.contains('/api/Users')) {
-            debugPrint('[API] --- BEGIN /api/Users ---');
-            debugPrint('[API]   status=$code');
-            if (data is Map) {
-              printTopLevelKeys(data, 'response');
-              if (data.containsKey('totalCount')) {
-                debugPrint('[API]   totalCount=${data['totalCount']}');
-              }
-              // Check for items array
-              for (final key in ['items', 'data', 'results', 'users']) {
-                final val = data[key];
-                if (val is List) {
-                  printFirstItem(val, 'items ($key)');
-                  break;
-                }
-              }
-            } else if (data is List) {
-              debugPrint('[API]   response is List length=${data.length}');
-              printFirstItem(data, 'items');
-            } else {
-              debugPrint('[API]   response type=${data.runtimeType}');
-            }
-            debugPrint('[API] --- END /api/Users ---');
-          } else if (path.contains('/api/memoryboard/photos')) {
-            debugPrint('[API] --- BEGIN /api/memoryboard/photos ---');
-            debugPrint('[API]   status=$code');
-            if (data is List) {
-              debugPrint('[API]   list length=${data.length}');
-              if (data.isNotEmpty && data.first is Map) {
-                final first = data.first as Map;
-                debugPrint('[API]   first item keys=${first.keys}');
-                // Check image fields
-                final imageFields = [
-                  'imageUrl',
-                  'photoUrl',
-                  'url',
-                  'fileUrl',
-                  'imagePath',
-                  'path',
-                  'image',
-                  'photo',
-                  'picture',
-                  'thumbnailUrl',
-                ];
-                for (final f in imageFields) {
-                  if (first.containsKey(f)) {
-                    debugPrint('[API]   image field "$f"=${first[f]}');
-                  }
-                }
-                // Safe print sample
-                final Map<String, dynamic> safe = {};
-                for (final k in first.keys) {
-                  final kLower = k.toString().toLowerCase();
-                  if (kLower.contains('token') ||
-                      kLower.contains('password') ||
-                      kLower.contains('otp') ||
-                      kLower.contains('secret') ||
-                      kLower.contains('pin')) {
-                    safe[k.toString()] = '***';
-                  } else {
-                    safe[k.toString()] = first[k];
-                  }
-                }
-                debugPrint('[API]   first item sample=$safe');
-              }
-            } else if (data is Map) {
-              printTopLevelKeys(data, 'response');
-              for (final key in ['items', 'data', 'results', 'photos']) {
-                final val = data[key];
-                if (val is List) {
-                  debugPrint('[API]   $key length=${val.length}');
-                  printFirstItem(val, 'first $key');
-                  if (val.isNotEmpty && val.first is Map) {
-                    final first = val.first as Map;
-                    for (final f in [
-                      'imageUrl',
-                      'photoUrl',
-                      'url',
-                      'fileUrl',
-                      'imagePath',
-                      'path',
-                    ]) {
-                      if (first.containsKey(f)) {
-                        debugPrint('[API]   image field "$f"=${first[f]}');
-                      }
-                    }
-                  }
-                  break;
-                }
-              }
-            } else {
-              debugPrint('[API]   response type=${data.runtimeType}');
-            }
-            debugPrint('[API] --- END /api/memoryboard/photos ---');
-          } else if (path.contains('/api/portal-content/announcements')) {
-            debugPrint('[API] --- BEGIN /api/portal-content/announcements ---');
-            debugPrint('[API]   status=$code');
-            if (data is List) {
-              debugPrint('[API]   list length=${data.length}');
-              if (data.isNotEmpty && data.first is Map) {
-                final first = data.first as Map;
-                debugPrint('[API]   first item keys=${first.keys}');
-                final Map<String, dynamic> safe = {};
-                for (final k in first.keys) {
-                  final kLower = k.toString().toLowerCase();
-                  if (kLower.contains('token') ||
-                      kLower.contains('password') ||
-                      kLower.contains('otp') ||
-                      kLower.contains('secret') ||
-                      kLower.contains('pin')) {
-                    safe[k.toString()] = '***';
-                  } else {
-                    safe[k.toString()] = first[k];
-                  }
-                }
-                debugPrint('[API]   first item sample=$safe');
-                // Check for challenge/poll fields
-                final pollKeys = [
-                  'type',
-                  'pollTitle',
-                  'options',
-                  'choices',
-                  'pollOptions',
-                  'votes',
-                  'voteCount',
-                  'poll',
-                  'polls',
-                  'challenge',
-                  'question',
-                ];
-                for (final pk in pollKeys) {
-                  if (first.containsKey(pk)) {
-                    debugPrint(
-                      '[API]   POLL/CHALLENGE field "$pk"=${first[pk]}',
-                    );
-                  }
-                }
-              }
-            } else if (data is Map) {
-              printTopLevelKeys(data, 'response');
-              for (final key in ['items', 'data', 'results', 'announcements']) {
-                final val = data[key];
-                if (val is List) {
-                  debugPrint('[API]   $key length=${val.length}');
-                  printFirstItem(val, 'first $key');
-                  break;
-                }
-              }
-            } else {
-              debugPrint('[API]   response type=${data.runtimeType}');
-            }
-            debugPrint('[API] --- END /api/portal-content/announcements ---');
-          } else if (path.contains('/api/portal-content/events')) {
-            debugPrint('[API] --- BEGIN /api/portal-content/events ---');
-            debugPrint('[API]   status=$code');
-            if (data is List) {
-              debugPrint('[API]   list length=${data.length}');
-              if (data.isEmpty) {
-                debugPrint('[API]   backend returned empty list');
-              } else if (data.first is Map) {
-                final first = data.first as Map;
-                debugPrint('[API]   first item keys=${first.keys}');
-                final Map<String, dynamic> safe = {};
-                for (final k in first.keys) {
-                  final kLower = k.toString().toLowerCase();
-                  if (kLower.contains('token') ||
-                      kLower.contains('password') ||
-                      kLower.contains('otp') ||
-                      kLower.contains('secret') ||
-                      kLower.contains('pin')) {
-                    safe[k.toString()] = '***';
-                  } else {
-                    safe[k.toString()] = first[k];
-                  }
-                }
-                debugPrint('[API]   first item sample=$safe');
-              }
-            } else if (data is Map) {
-              printTopLevelKeys(data, 'response');
-              for (final key in ['items', 'data', 'results', 'events']) {
-                final val = data[key];
-                if (val is List) {
-                  debugPrint('[API]   $key length=${val.length}');
-                  if (val.isEmpty) {
-                    debugPrint('[API]   backend returned empty list');
-                  } else {
-                    printFirstItem(val, 'first $key');
-                  }
-                  break;
-                }
-              }
-            } else {
-              debugPrint('[API]   response type=${data.runtimeType}');
-            }
-            debugPrint('[API] --- END /api/portal-content/events ---');
-          } else if (path.contains('/api/DailyHighlights/active')) {
-            debugPrint('[API] --- BEGIN /api/DailyHighlights/active ---');
-            debugPrint('[API]   status=$code');
-            if (data is List) {
-              debugPrint('[API]   list length=${data.length}');
-              if (data.isEmpty) {
-                debugPrint('[API]   backend returned empty list');
-              } else if (data.first is Map) {
-                final first = data.first as Map;
-                debugPrint('[API]   first item keys=${first.keys}');
-                final Map<String, dynamic> safe = {};
-                for (final k in first.keys) {
-                  final kLower = k.toString().toLowerCase();
-                  if (kLower.contains('token') ||
-                      kLower.contains('password') ||
-                      kLower.contains('otp') ||
-                      kLower.contains('secret') ||
-                      kLower.contains('pin')) {
-                    safe[k.toString()] = '***';
-                  } else {
-                    safe[k.toString()] = first[k];
-                  }
-                }
-                debugPrint('[API]   first item sample=$safe');
-              }
-            } else if (data is Map) {
-              printTopLevelKeys(data, 'response');
-              for (final key in ['items', 'data', 'results', 'highlights']) {
-                final val = data[key];
-                if (val is List) {
-                  debugPrint('[API]   $key length=${val.length}');
-                  if (val.isEmpty) {
-                    debugPrint('[API]   backend returned empty list');
-                  } else {
-                    printFirstItem(val, 'first $key');
-                  }
-                  break;
-                }
-              }
-            } else {
-              debugPrint('[API]   response type=${data.runtimeType}');
-            }
-            debugPrint('[API] --- END /api/DailyHighlights/active ---');
-          }
-
+          final startTime =
+              response.requestOptions.extra['_startTime'] as DateTime?;
+          final elapsed = startTime != null
+              ? DateTime.now().difference(startTime).inMilliseconds
+              : 0;
+          final count = data is List ? ' count=${data.length}' : '';
+          appDebugLog(
+            '[API] status=${response.statusCode} elapsedMs=$elapsed$count',
+          );
           handler.next(response);
         },
         onError: (error, handler) {
-          debugPrint(
-            '[API] ❌ ${error.response?.statusCode} '
-            '${error.requestOptions.path} '
-            '${error.message}',
-          );
-          if (error.response?.data is Map) {
-            final d = error.response!.data as Map;
-            debugPrint('[API] ❌ error data keys: ${d.keys}');
+          final code = error.response?.statusCode;
+          final startTime =
+              error.requestOptions.extra['_startTime'] as DateTime?;
+          final elapsed = startTime != null
+              ? DateTime.now().difference(startTime).inMilliseconds
+              : 0;
+
+          if (code == 401 && !_isPublicAuthPath(error.requestOptions.path)) {
+            unawaited(_sessionManager.handleUnauthorized());
           }
+
+          if (code == 429) {
+            int cooldownSecs = 8;
+            final retryAfter = error.response?.headers.value('retry-after');
+            if (retryAfter != null) {
+              final parsed = int.tryParse(retryAfter);
+              if (parsed != null && parsed > 0) {
+                cooldownSecs = parsed;
+              }
+            }
+            _globalGetCooldownUntil = DateTime.now().add(
+              Duration(seconds: cooldownSecs),
+            );
+            appDebugLog('[API] status=429 cooldownSeconds=$cooldownSecs');
+          }
+
+          appDebugLog('[API] request failed status=$code elapsedMs=$elapsed');
           handler.next(error);
         },
       ),
     );
   }
 
+  String _sanitizeQuery(Map<String, dynamic> query) {
+    const sensitive = [
+      'token',
+      'otp',
+      'password',
+      'email',
+      'authorization',
+      'secret',
+      'code',
+      'search',
+      'query',
+    ];
+    final parts = <String>[];
+    query.forEach((key, value) {
+      if (value == null) return;
+      final lower = key.toLowerCase();
+      final isSensitive = sensitive.any(lower.contains);
+      parts.add('$key=${isSensitive ? '<redacted>' : value}');
+    });
+    return parts.join('&');
+  }
+
+  static const List<String> _exactPublicAuthPaths = [
+    '/api/Auth/login',
+    '/api/Auth/verify-otp',
+  ];
+  static const String _publicRecognizePrefix = '/api/Auth/recognize/';
+
+  bool _isPublicAuthPath(String path) {
+    final normalized = path.split('?').first;
+    if (_exactPublicAuthPaths.contains(normalized)) return true;
+    return normalized.startsWith(_publicRecognizePrefix);
+  }
+
+  String _requestKey(
+    String method,
+    String path,
+    Map<String, dynamic>? queryParameters,
+  ) {
+    final sorted = (queryParameters ?? <String, dynamic>{}).entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    return '$method|$path|${sorted.where((e) => e.value != null).map((e) => '${e.key}=${e.value}').join('&')}';
+  }
+
   Future<Response<T>> get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    if (_globalGetCooldownUntil != null &&
+        DateTime.now().isBefore(_globalGetCooldownUntil!)) {
+      appDebugLog('[API] GET blocked by global cooldown');
+      throw ApiException(
+        message: 'Too many requests. Please wait a moment and try again.',
+        statusCode: 429,
+      );
+    }
+    final key = _requestKey('GET', path, queryParameters);
+    final existing = _inFlightGets[key];
+    if (existing != null) {
+      appDebugLog('[API] duplicate GET reused');
+      return await existing as Response<T>;
+    }
+    final future = _executeGet<T>(path, queryParameters: queryParameters);
+    _inFlightGets[key] = future;
+    try {
+      return await future;
+    } finally {
+      _inFlightGets.remove(key);
+    }
+  }
+
+  Future<Response<T>> _executeGet<T>(
     String path, {
     Map<String, dynamic>? queryParameters,
   }) async {
@@ -395,7 +238,12 @@ class ApiClient {
         fieldName: await MultipartFile.fromFile(filePath),
         if (extraFields != null) ...extraFields,
       });
-      return await _dio.post<T>(path, data: formData);
+      final options = Options(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 60),
+        sendTimeout: const Duration(seconds: 60),
+      );
+      return await _dio.post<T>(path, data: formData, options: options);
     } on DioException catch (e) {
       throw _handleError(e);
     }
@@ -403,13 +251,17 @@ class ApiClient {
 
   ApiException _handleError(DioException e) {
     final message = switch (e.type) {
-      DioExceptionType.connectionTimeout => 'Connection timeout',
-      DioExceptionType.sendTimeout => 'Send timeout',
-      DioExceptionType.receiveTimeout => 'Receive timeout',
-      DioExceptionType.connectionError => 'No internet connection',
+      DioExceptionType.connectionTimeout =>
+        'Connection timed out. Please try again.',
+      DioExceptionType.sendTimeout =>
+        'The connection is too slow. Please try again.',
+      DioExceptionType.receiveTimeout =>
+        'The server is taking too long to respond. Please try again.',
+      DioExceptionType.connectionError =>
+        'No internet connection. Please check your connection and try again.',
       DioExceptionType.badResponse => _parseStatusCode(e.response?.statusCode),
-      DioExceptionType.cancel => 'Request cancelled',
-      _ => 'An unexpected error occurred',
+      DioExceptionType.cancel => 'Request cancelled.',
+      _ => 'Something went wrong. Please try again.',
     };
     return ApiException(
       message: message,
@@ -426,8 +278,10 @@ class ApiClient {
       404 => 'Not found',
       409 => 'Conflict',
       422 => 'Validation error',
-      500 => 'Internal server error',
-      _ => 'Request failed with status code $statusCode',
+      429 => 'Too many requests. Please wait a moment and try again.',
+      500 => 'Something went wrong. Please try again.',
+      502 || 503 || 504 => 'Server unavailable. Please try again later.',
+      _ => 'Something went wrong. Please try again.',
     };
   }
 }

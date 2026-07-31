@@ -1,38 +1,66 @@
-class PollOption {
-  const PollOption({
-    required this.id,
-    required this.title,
-    required this.votes,
-    required this.percentage,
-    this.isSelected = false,
+class PollVoter {
+  const PollVoter({
+    required this.username,
+    this.photoUrl,
+    required this.votedAt,
+    required this.isCurrentUser,
   });
 
-  final String id;
-  final String title;
-  final int votes;
+  final String username;
+  final String? photoUrl;
+  final String votedAt;
+  final bool isCurrentUser;
 
-  /// Value from 0.0 to 1.0
-  final double percentage;
+  factory PollVoter.fromJson(Map<String, dynamic> json) {
+    return PollVoter(
+      username: json['username'] as String? ?? '',
+      photoUrl: json['photoUrl'] as String?,
+      votedAt: json['votedAt'] as String? ?? '',
+      isCurrentUser: json['isCurrentUser'] as bool? ?? false,
+    );
+  }
+}
 
-  final bool isSelected;
+class PollOption {
+  const PollOption({
+    required this.label,
+    required this.voteCount,
+    required this.voters,
+  });
+
+  final String label;
+  final int voteCount;
+  final List<PollVoter> voters;
+
+  bool get isSelected => voters.any((v) => v.isCurrentUser);
 
   factory PollOption.fromJson(Map<String, dynamic> json) {
     return PollOption(
-      id: (json['id'] as num?)?.toString() ?? '',
-      title: json['title'] as String? ?? '',
-      votes: json['votes'] as int? ?? 0,
-      percentage: (json['percentage'] as num?)?.toDouble() ?? 0.0,
-      isSelected: json['isSelected'] as bool? ?? false,
+      label: json['label'] as String? ?? '',
+      voteCount: json['voteCount'] as int? ?? 0,
+      voters: (json['voters'] as List<dynamic>? ?? [])
+          .map((v) => PollVoter.fromJson(v as Map<String, dynamic>))
+          .toList(),
     );
   }
+}
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'title': title,
-      'votes': votes,
-      'percentage': percentage,
-      'isSelected': isSelected,
-    };
+class Poll {
+  const Poll({required this.title, required this.options});
+
+  final String title;
+  final List<PollOption> options;
+
+  int get totalVotes => options.fold(0, (sum, o) => sum + o.voteCount);
+
+  bool get hasOptions => options.isNotEmpty;
+
+  factory Poll.fromJson(Map<String, dynamic> json) {
+    return Poll(
+      title: json['title'] as String? ?? '',
+      options: (json['options'] as List<dynamic>? ?? [])
+          .map((o) => PollOption.fromJson(o as Map<String, dynamic>))
+          .toList(),
+    );
   }
 }

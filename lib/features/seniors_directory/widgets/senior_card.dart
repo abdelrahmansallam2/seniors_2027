@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/core/navigation/retro_page_route.dart';
-import 'package:seniors_27/features/seniors_directory/senior_details_screen.dart';
+import 'package:seniors_27/features/profile/profile_screen.dart';
 import 'package:seniors_27/features/seniors_directory/models/senior_student.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
@@ -56,7 +56,11 @@ class SeniorCard extends StatelessWidget {
               Navigator.push(
                 context,
                 RetroPageRoute(
-                  builder: (_) => SeniorDetailsScreen(senior: senior),
+                  builder: (_) => ProfileScreen(
+                    onOpenNotes: () {},
+                    userId: senior.id,
+                    readOnly: true,
+                  ),
                 ),
               );
             },

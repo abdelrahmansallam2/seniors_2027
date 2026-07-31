@@ -4,6 +4,7 @@ class Memory {
   final String date;
   final String? imageUrl;
   final String? description;
+  final String status;
 
   static const _baseUrl = 'https://sneiors2027.runasp.net';
 
@@ -13,6 +14,7 @@ class Memory {
     required this.date,
     this.imageUrl,
     this.description,
+    this.status = '',
   });
 
   factory Memory.fromJson(Map<String, dynamic> json) {
@@ -43,6 +45,7 @@ class Memory {
           '',
       imageUrl: resolvedUrl,
       description: json['description'] as String?,
+      status: json['status']?.toString() ?? '',
     );
   }
 }

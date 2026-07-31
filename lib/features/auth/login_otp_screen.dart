@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/core/api/api_exception.dart';
+import 'package:seniors_27/core/auth/session_manager.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/core/navigation/retro_page_route.dart';
 import 'package:seniors_27/core/storage/token_storage.dart';
@@ -26,6 +27,7 @@ Future<String?> defaultVerifyOtp(String email, String otp) async {
       final token = data['token'] as String?;
       if (token != null) {
         await TokenStorage().saveToken(token);
+        SessionManager.instance.resetAfterSuccessfulLogin();
         return null;
       }
     }
