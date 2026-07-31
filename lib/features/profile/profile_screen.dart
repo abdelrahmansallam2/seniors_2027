@@ -3,12 +3,11 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/core/api/api_exception.dart';
+import 'package:seniors_27/core/auth/session_manager.dart';
 import 'package:seniors_27/core/cache/current_user_cache.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
-import 'package:seniors_27/core/storage/token_storage.dart';
 import 'package:seniors_27/core/utils/app_log.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
-import 'package:seniors_27/features/auth/login_email_screen.dart';
 import 'package:seniors_27/features/notes/data/notes_api_service.dart';
 import 'package:seniors_27/features/seniors_directory/data/seniors_api_service.dart';
 import 'package:seniors_27/features/notes/models/note.dart';
@@ -519,12 +518,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (confirm != true) return;
-    await TokenStorage().clearToken();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginEmailScreen()),
-      (route) => false,
-    );
+    await SessionManager.instance.logout();
   }
 
   @override
