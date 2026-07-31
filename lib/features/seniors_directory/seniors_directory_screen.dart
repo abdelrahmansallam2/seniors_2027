@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/core/api/api_exception.dart';
@@ -6,7 +8,6 @@ import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
 import 'package:seniors_27/features/seniors_directory/data/seniors_api_service.dart';
 import 'package:seniors_27/features/seniors_directory/models/senior_student.dart';
 import 'package:seniors_27/features/seniors_directory/widgets/senior_card.dart';
-import 'package:seniors_27/features/seniors_directory/widgets/seniors_empty_state.dart';
 import 'package:seniors_27/features/seniors_directory/widgets/seniors_search_bar.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
 import 'package:seniors_27/shared/widgets/retro_grid_background.dart';
@@ -24,62 +25,88 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   List<SeniorStudent> _allSeniors = [];
-  List<SeniorStudent> _filteredSeniors = [];
   bool _isLoading = true;
   String? _error;
+  int _requestId = 0;
+  String? _activeRequestKey;
 
   int _pageNumber = 1;
   int _totalPages = 1;
   bool _hasNextPage = false;
-  int _totalCount = 0;
-  static const int _pageSize = 10;
+  static const int _pageSize = 9;
+
+  Timer? _debounce;
+  String _currentSearchQuery = '';
+  bool _isSearchMode = false;
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
-    _loadData(pageNumber: 1);
+    _loadSeniors();
   }
 
   @override
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadData({required int pageNumber}) async {
+  Future<void> _loadSeniors({int? page, String? search}) async {
+    final targetPage = page ?? 1;
+    final normalizedSearch = search?.trim() ?? '';
+    final requestKey = '$targetPage|$normalizedSearch';
+
+    if (_activeRequestKey == requestKey) return;
+    _activeRequestKey = requestKey;
+
     setState(() {
       _isLoading = true;
       _error = null;
+      if (normalizedSearch != _currentSearchQuery) {
+        _isSearchMode = normalizedSearch.isNotEmpty;
+        _currentSearchQuery = normalizedSearch;
+      }
     });
+
+    final requestId = ++_requestId;
+
     try {
       final response = await _api.getUsers(
-        pageNumber: pageNumber,
+        pageNumber: targetPage,
         pageSize: _pageSize,
+        search: normalizedSearch.isNotEmpty ? normalizedSearch : null,
       );
+
+      if (!mounted || requestId != _requestId) return;
+
       final data = response.data;
-      if (!mounted) return;
       final seniors = _parseSeniors(data);
       _parsePaginationMeta(data);
+
       setState(() {
         _allSeniors = seniors;
-        _pageNumber = pageNumber;
-        _applyFilter();
-        _isLoading = false;
+        _pageNumber = targetPage;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestId != _requestId) return;
       setState(() {
-        _error = e.message;
-        _isLoading = false;
+        _error = e.statusCode == 429
+            ? 'Too many requests. Please wait a moment and try again.'
+            : e.message;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || requestId != _requestId) return;
       setState(() {
         _error = 'Something went wrong. Please try again.';
-        _isLoading = false;
       });
+    } finally {
+      if (mounted && requestId == _requestId) {
+        setState(() => _isLoading = false);
+        _activeRequestKey = null;
+      }
     }
   }
 
@@ -99,26 +126,18 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
 
   void _parsePaginationMeta(dynamic data) {
     if (data is Map) {
-      _totalCount = (data['totalCount'] as num?)?.toInt() ?? _totalCount;
       _totalPages = (data['totalPages'] as num?)?.toInt() ?? _totalPages;
       _hasNextPage = data['hasNextPage'] as bool? ?? false;
     }
   }
 
   void _onSearchChanged() {
-    _applyFilter();
-  }
-
-  void _applyFilter() {
-    final query = _searchController.text.toLowerCase();
-    setState(() {
-      if (query.isEmpty) {
-        _filteredSeniors = List.of(_allSeniors);
-      } else {
-        _filteredSeniors = _allSeniors.where((senior) {
-          return senior.name.toLowerCase().contains(query);
-        }).toList();
-      }
+    _debounce?.cancel();
+    final query = _searchController.text;
+    _debounce = Timer(const Duration(milliseconds: 600), () {
+      final trimmed = query.trim();
+      if (trimmed == _currentSearchQuery) return;
+      _loadSeniors(search: trimmed);
     });
   }
 
@@ -161,7 +180,7 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
   }
 
   Widget _buildBody() {
-    if (_isLoading) {
+    if (_isLoading && _allSeniors.isEmpty && _error == null) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.symmetric(vertical: 80),
@@ -178,7 +197,7 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
       );
     }
 
-    if (_error != null) {
+    if (_error != null && _allSeniors.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 60),
@@ -205,7 +224,7 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
                 child: RetroButton(
                   label: 'Retry',
                   height: 36,
-                  onPressed: () => _loadData(pageNumber: _pageNumber),
+                  onPressed: _isLoading ? null : () => _loadSeniors(),
                   textStyle: const TextStyle(
                     fontWeight: FontWeight.w900,
                     fontSize: 10,
@@ -219,6 +238,38 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
     }
 
     if (_allSeniors.isEmpty) {
+      if (_isSearchMode) {
+        return const Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 80),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.person_search_rounded,
+                  size: 48,
+                  color: AppColors.muted,
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'No seniors found.',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Try another search or filter.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
       return const Center(
         child: Padding(
           padding: EdgeInsets.symmetric(vertical: 80),
@@ -251,16 +302,14 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
   }
 
   Widget _buildGrid() {
-    if (_filteredSeniors.isEmpty) {
-      return const SeniorsEmptyState();
-    }
+    final showPagination = _totalPages > 1;
 
     return Column(
       children: [
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: _filteredSeniors.length,
+          itemCount: _allSeniors.length,
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
             crossAxisSpacing: 12,
@@ -268,11 +317,11 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
             childAspectRatio: 0.65,
           ),
           itemBuilder: (context, index) {
-            return SeniorCard(senior: _filteredSeniors[index]);
+            return SeniorCard(senior: _allSeniors[index]);
           },
         ),
         const SizedBox(height: 32),
-        if (_totalPages > 1)
+        if (showPagination)
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -282,7 +331,10 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
                   label: 'PREV',
                   height: 36,
                   onPressed: _pageNumber > 1
-                      ? () => _loadData(pageNumber: _pageNumber - 1)
+                      ? () => _loadSeniors(
+                          page: _pageNumber - 1,
+                          search: _isSearchMode ? _currentSearchQuery : null,
+                        )
                       : null,
                 ),
               ),
@@ -302,7 +354,10 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
                   label: 'NEXT',
                   height: 36,
                   onPressed: _hasNextPage
-                      ? () => _loadData(pageNumber: _pageNumber + 1)
+                      ? () => _loadSeniors(
+                          page: _pageNumber + 1,
+                          search: _isSearchMode ? _currentSearchQuery : null,
+                        )
                       : null,
                 ),
               ),

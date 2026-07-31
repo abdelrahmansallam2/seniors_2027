@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:seniors_27/features/dashboard/dashboard_screen.dart';
@@ -20,6 +21,8 @@ class MainAppShell extends StatefulWidget {
 
 class _MainAppShellState extends State<MainAppShell> {
   late int _currentIndex;
+  late final List<Widget?> _screens;
+  late final List<Widget Function()> _screenBuilders;
   bool _notesOpen = false;
   final List<int> _tabHistory = [];
   DateTime? _lastBackPress;
@@ -28,10 +31,35 @@ class _MainAppShellState extends State<MainAppShell> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex.clamp(0, 4);
+    _screenBuilders = [
+      () => DashboardScreen(onOpenNotes: _openNotes),
+      () => const SeniorsDirectoryScreen(),
+      () => const MemoryboardScreen(),
+      () => const LeaderboardScreen(),
+      () => ProfileScreen(onOpenNotes: _openNotes),
+    ];
+    _screens = List<Widget?>.filled(5, null);
+    _screens[0] = _screenBuilders[0]();
+    if (kDebugMode) debugPrint('[MainAppShell] created tab index=0');
+  }
+
+  void _ensureScreenCreated(int index) {
+    if (_screens[index] != null) {
+      if (kDebugMode) debugPrint('[MainAppShell] reused tab index=$index');
+      return;
+    }
+    if (kDebugMode) debugPrint('[MainAppShell] created tab index=$index');
+    _screens[index] = _screenBuilders[index]();
   }
 
   void _selectTab(int index) {
-    if (index == _currentIndex && !_notesOpen) return;
+    if (index == _currentIndex && !_notesOpen) {
+      if (kDebugMode) {
+        debugPrint('[MainAppShell] ignored active tab index=$index');
+      }
+      return;
+    }
+    _ensureScreenCreated(index);
     setState(() {
       if (_currentIndex != index) {
         _tabHistory.add(_currentIndex);
@@ -97,30 +125,6 @@ class _MainAppShellState extends State<MainAppShell> {
     return false;
   }
 
-  Widget _selectedScreen() {
-    if (_notesOpen) {
-      return NotesOpenBookScreen(
-        key: const ValueKey('notes'),
-        onBackToProfile: _closeNotes,
-        openedFromProfile: true,
-      );
-    }
-
-    return switch (_currentIndex) {
-      0 => DashboardScreen(
-        key: const ValueKey('dashboard'),
-        onOpenNotes: _openNotes,
-      ),
-      1 => const SeniorsDirectoryScreen(key: ValueKey('seniors')),
-      2 => const MemoryboardScreen(key: ValueKey('memory')),
-      3 => const LeaderboardScreen(key: ValueKey('board')),
-      _ => ProfileScreen(
-        key: const ValueKey('profile'),
-        onOpenNotes: _openNotes,
-      ),
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -136,24 +140,18 @@ class _MainAppShellState extends State<MainAppShell> {
             child: Column(
               children: [
                 Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 290),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInOutCubic,
-                    transitionBuilder: (child, animation) {
-                      return FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position: Tween<Offset>(
-                            begin: const Offset(0.025, 0),
-                            end: Offset.zero,
-                          ).animate(animation),
-                          child: child,
+                  child: _notesOpen
+                      ? NotesOpenBookScreen(
+                          onBackToProfile: _closeNotes,
+                          openedFromProfile: true,
+                        )
+                      : IndexedStack(
+                          index: _currentIndex,
+                          children: List.generate(
+                            _screens.length,
+                            (i) => _screens[i] ?? const SizedBox.shrink(),
+                          ),
                         ),
-                      );
-                    },
-                    child: _selectedScreen(),
-                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),

@@ -2,12 +2,18 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/api/api_client.dart';
+import 'package:seniors_27/core/api/api_exception.dart';
+import 'package:seniors_27/core/cache/current_user_cache.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/core/storage/token_storage.dart';
+import 'package:seniors_27/core/utils/app_log.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
 import 'package:seniors_27/features/auth/login_email_screen.dart';
 import 'package:seniors_27/features/notes/data/notes_api_service.dart';
+import 'package:seniors_27/features/seniors_directory/data/seniors_api_service.dart';
 import 'package:seniors_27/features/notes/models/note.dart';
+import 'package:seniors_27/features/notes/notes_open_book_screen.dart';
+import 'package:seniors_27/features/notes/send_note_screen.dart';
 import 'package:seniors_27/features/profile/data/profile_api_service.dart';
 import 'package:seniors_27/features/profile/data/profile_gallery_api_service.dart';
 import 'package:seniors_27/features/profile/models/profile_gallery_photo.dart';
@@ -21,6 +27,7 @@ import 'package:seniors_27/features/profile/social_links_screen.dart';
 import 'package:seniors_27/shared/widgets/note_card.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
 import 'package:seniors_27/shared/widgets/retro_section_header.dart';
+import 'package:seniors_27/shared/widgets/retro_grid_background.dart';
 import 'package:seniors_27/shared/widgets/retro_sticker.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -28,9 +35,16 @@ import 'package:seniors_27/features/profile/widgets/profile_gallery_card.dart';
 import 'package:seniors_27/features/profile/widgets/spotify_preview.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({required this.onOpenNotes, super.key});
+  const ProfileScreen({
+    required this.onOpenNotes,
+    this.userId,
+    this.readOnly = false,
+    super.key,
+  });
 
   final VoidCallback onOpenNotes;
+  final String? userId;
+  final bool readOnly;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -51,6 +65,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   List<String> _socialLinks = [];
 
+  String _currentUserId = '';
   List<Note> _latestNotes = [];
   int _totalNotesCount = 0;
   bool _notesLoading = true;
@@ -63,18 +78,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
+    if (widget.readOnly) {
+      await _loadVisitedProfile();
+      return;
+    }
     try {
-      final response = await _profileApi.getMe();
+      List<String>? fetchedLinks;
+      final parsed = await CurrentUserCache.get(
+        fetcher: () async {
+          final response = await _profileApi.getMe();
+          final data = response.data;
+          appDebugLog(
+            '[Profile] /api/Auth/me response type: ${data.runtimeType}',
+          );
+
+          if (data is Map<String, dynamic>) {
+            fetchedLinks = _parseSocialLinks(data);
+            return ProfileUser.fromJson(data);
+          }
+          throw const FormatException('unexpected /api/Auth/me payload');
+        },
+      );
+      appDebugLog('[Profile] loaded user id=${parsed.id}');
+
+      if (mounted) {
+        final links = fetchedLinks;
+        setState(() {
+          _user = parsed;
+          if (links != null) {
+            _socialLinks = links;
+          }
+        });
+        _loadGallery(parsed.id);
+        _loadLatestNotes(parsed.id);
+      }
+    } catch (e) {
+      appDebugLog(
+        '[Profile] /api/Auth/me failed status=${e is ApiException ? e.statusCode : null}',
+      );
+      _stopChildLoading();
+    }
+  }
+
+  Future<void> _loadVisitedProfile() async {
+    try {
+      final me = CurrentUserCache.peek();
+      if (me != null) {
+        _currentUserId = me.id;
+      }
+
+      final api = SeniorsApiService(ApiClient());
+      final response = await api.getUserById(widget.userId!);
       final data = response.data;
-      debugPrint('[Profile] /api/Auth/me response type: ${data.runtimeType}');
+      appDebugLog(
+        '[Profile] /api/Users/{id} response type: ${data.runtimeType}',
+      );
 
       if (data is Map<String, dynamic>) {
-        debugPrint('[Profile] /api/Auth/me keys: ${data.keys.toList()}');
         final parsed = ProfileUser.fromJson(data);
-        debugPrint(
-          '[Profile] parsed user: id=${parsed.id}, name=${parsed.name}, '
-          'email=${parsed.email}, photoUrl=${parsed.photoUrl}',
-        );
+        appDebugLog('[Profile] visited user id=${parsed.id}');
 
         if (mounted) {
           setState(() {
@@ -85,24 +147,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _loadLatestNotes(parsed.id);
         }
       } else {
-        debugPrint(
-          '[Profile] unexpected /api/Auth/me type: ${data.runtimeType}',
+        appDebugLog(
+          '[Profile] unexpected /api/Users/{id} type: ${data.runtimeType}',
         );
-        if (mounted) {
-          _loadGallery(_user.id);
-          _loadLatestNotes(_user.id);
-        }
       }
     } catch (e) {
-      debugPrint('[Profile] /api/Auth/me error: $e');
-      if (mounted) {
-        _loadGallery('');
-        _loadLatestNotes('');
-      }
+      appDebugLog(
+        '[Profile] visited profile failed status=${e is ApiException ? e.statusCode : null}',
+      );
+      _stopChildLoading();
     }
   }
 
+  void _stopChildLoading() {
+    if (!mounted) return;
+    setState(() {
+      if (_galleryPhotos.isEmpty) {
+        _galleryError = 'Failed to load gallery.';
+      }
+      _galleryLoading = false;
+      if (_latestNotes.isEmpty && _totalNotesCount == 0) {
+        _notesError = 'Notes unavailable.';
+      }
+      _notesLoading = false;
+    });
+  }
+
   Future<void> _loadGallery(String userId) async {
+    if (!_isValidProfileId(userId)) {
+      appDebugLog(
+        '[Profile] child requests skipped because user id is unavailable',
+      );
+      if (mounted) {
+        setState(() {
+          _galleryLoading = false;
+        });
+      }
+      return;
+    }
+
     setState(() {
       _galleryLoading = true;
       _galleryError = null;
@@ -112,46 +195,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final response = await _galleryApi.getUserGallery(userId);
       final data = response.data;
 
-      debugPrint('[Profile] gallery response type: ${data.runtimeType}');
+      appDebugLog('[Profile] gallery response type: ${data.runtimeType}');
 
       List<dynamic> itemsList;
 
       if (data is List) {
-        debugPrint('[Profile] gallery raw list length: ${data.length}');
+        appDebugLog('[Profile] gallery raw list length: ${data.length}');
         itemsList = data;
       } else if (data is Map) {
-        debugPrint('[Profile] gallery keys: ${data.keys.toList()}');
         itemsList =
             (data['items'] as List<dynamic>?) ??
             (data['photos'] as List<dynamic>?) ??
             (data['results'] as List<dynamic>?) ??
             (data['data'] as List<dynamic>?) ??
             [];
-        debugPrint('[Profile] gallery items length: ${itemsList.length}');
+        appDebugLog('[Profile] gallery items length: ${itemsList.length}');
       } else {
-        debugPrint('[Profile] unexpected gallery type: ${data.runtimeType}');
+        appDebugLog('[Profile] unexpected gallery type: ${data.runtimeType}');
         itemsList = [];
-      }
-
-      if (itemsList.isNotEmpty) {
-        final first = itemsList.first;
-        if (first is Map) {
-          debugPrint(
-            '[Profile] gallery first item keys: ${first.keys.toList()}',
-          );
-        }
       }
 
       final parsed = itemsList
           .whereType<Map<String, dynamic>>()
           .map(ProfileGalleryPhoto.fromJson)
           .toList();
-
-      if (parsed.isNotEmpty) {
-        debugPrint(
-          '[Profile] first 3 resolved URLs: ${parsed.take(3).map((p) => p.photoUrl).toList()}',
-        );
-      }
 
       if (mounted) {
         setState(() {
@@ -160,10 +227,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
       }
     } catch (e) {
-      debugPrint('[Profile] gallery fetch error: $e');
+      appDebugLog(
+        '[Profile] gallery failed status=${e is ApiException ? e.statusCode : null}',
+      );
       if (mounted) {
         setState(() {
-          _galleryError = 'Failed to load gallery.';
+          final isRateLimited = e is ApiException && e.statusCode == 429;
+          if (!(isRateLimited && _galleryPhotos.isNotEmpty)) {
+            _galleryError = 'Failed to load gallery.';
+          }
           _galleryLoading = false;
         });
       }
@@ -171,6 +243,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadLatestNotes(String recipientId) async {
+    appDebugLog('[VisitedNotes] _loadLatestNotes started');
+
+    if (!_isValidProfileId(recipientId)) {
+      appDebugLog(
+        '[Profile] child requests skipped because user id is unavailable',
+      );
+      if (mounted) {
+        setState(() {
+          _notesLoading = false;
+        });
+      }
+      return;
+    }
+
     setState(() {
       _notesLoading = true;
       _notesError = null;
@@ -202,6 +288,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .map(Note.fromJson)
           .toList();
 
+      parsed.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      appDebugLog(
+        '[VisitedNotes] parsed=${parsed.length} totalCount=$totalCount',
+      );
+
       if (mounted) {
         setState(() {
           _totalNotesCount = totalCount > 0 ? totalCount : parsed.length;
@@ -212,11 +304,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _notesError = 'Notes unavailable.';
+          final isRateLimited = e is ApiException && e.statusCode == 429;
+          if (!(isRateLimited &&
+              (_latestNotes.isNotEmpty || _totalNotesCount > 0))) {
+            _notesError = 'Notes unavailable.';
+          }
           _notesLoading = false;
         });
       }
     }
+  }
+
+  static bool _isValidProfileId(String id) {
+    final trimmed = id.trim();
+    if (trimmed.isEmpty) return false;
+    final parsed = int.tryParse(trimmed);
+    if (parsed != null && parsed == 0) return false;
+    return true;
   }
 
   static List<String> _parseSocialLinks(Map<String, dynamic> data) {
@@ -333,7 +437,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _openPhotoEditor() async {
     final oldUrl = _user.photoUrl;
-    debugPrint('[Profile] oldPhotoUrl before editor: $oldUrl');
 
     final result = await Navigator.of(context).push<String>(
       MaterialPageRoute(
@@ -341,8 +444,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (result != null && mounted) {
-      debugPrint('[Profile] receivedPhotoUrl: $result');
-
       if (oldUrl != null && oldUrl.isNotEmpty) {
         imageCache.evict(NetworkImage(oldUrl));
       }
@@ -361,7 +462,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           favoriteSongEmbedUrl: _user.favoriteSongEmbedUrl,
         );
       });
-      debugPrint('[Profile] userUpdated: true');
+      appDebugLog('[Profile] userUpdated: true');
     }
   }
 
@@ -429,19 +530,73 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = _user;
+    final content = _buildContent(user);
 
+    if (widget.readOnly) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: RetroGridBackground(child: SafeArea(child: content)),
+      );
+    }
+    return content;
+  }
+
+  Widget _buildContent(ProfileUser user) {
     return SingleChildScrollView(
       key: const PageStorageKey('profile_scroll'),
       padding: const EdgeInsets.fromLTRB(22, 30, 22, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (widget.readOnly)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: SizedBox(
+                width: 100,
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.paper,
+                      border: Border.all(color: AppColors.ink, width: 2),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: AppColors.ink,
+                          offset: Offset(3, 3),
+                          blurRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.arrow_back, size: 14, color: AppColors.ink),
+                        SizedBox(width: 4),
+                        Text(
+                          'BACK',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Stack(
             clipBehavior: Clip.none,
             children: [
               MainPageHeader(
-                title: 'My Profile',
-                subtitle: 'Your senior identity.',
+                title: widget.readOnly ? 'PROFILE' : 'My Profile',
+                subtitle: widget.readOnly
+                    ? (user.name.isNotEmpty
+                          ? user.name.toUpperCase()
+                          : 'VISITING')
+                    : 'Your senior identity.',
               ),
               Positioned(
                 top: 2,
@@ -460,16 +615,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 20),
           _buildSocialAndSpotify(),
           const SizedBox(height: 20),
-          GestureDetector(
-            onTap: widget.onOpenNotes,
-            child: _buildLatestNotes(),
-          ),
+          if (widget.readOnly)
+            _buildCompactNotes()
+          else
+            GestureDetector(
+              onTap: widget.onOpenNotes,
+              child: _buildLatestNotes(),
+            ),
           const SizedBox(height: 20),
           _buildGallerySection(),
-          const SizedBox(height: 28),
-          _buildLogoutButton(),
+          if (!widget.readOnly) ...[
+            const SizedBox(height: 28),
+            _buildLogoutButton(),
+          ],
           const SizedBox(height: 24),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPointsBadge(int points) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.yellowWarm,
+          border: Border.all(color: AppColors.ink, width: 2),
+          boxShadow: const [
+            BoxShadow(
+              color: AppColors.ink,
+              offset: Offset(2, 2),
+              blurRadius: 0,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.star, size: 14, color: AppColors.ink),
+            const SizedBox(width: 6),
+            Text(
+              '${_formatPoints(points)} POINTS',
+              style: const TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 11,
+                height: 1.2,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -500,34 +696,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         )
                       : const _PhotoPlaceholder(),
-                  Positioned(
-                    right: 6,
-                    bottom: 6,
-                    child: GestureDetector(
-                      onTap: _openPhotoEditor,
-                      child: Container(
-                        width: 28,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: AppColors.paper,
-                          border: Border.all(color: AppColors.ink, width: 1.5),
-                          boxShadow: const [
-                            BoxShadow(
+                  if (!widget.readOnly)
+                    Positioned(
+                      right: 6,
+                      bottom: 6,
+                      child: GestureDetector(
+                        onTap: _openPhotoEditor,
+                        child: Container(
+                          width: 28,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: AppColors.paper,
+                            border: Border.all(
                               color: AppColors.ink,
-                              offset: Offset(1.5, 1.5),
-                              blurRadius: 0,
+                              width: 1.5,
                             ),
-                          ],
-                        ),
-                        alignment: Alignment.center,
-                        child: const Icon(
-                          Icons.edit,
-                          size: 13,
-                          color: AppColors.ink,
+                            boxShadow: const [
+                              BoxShadow(
+                                color: AppColors.ink,
+                                offset: Offset(1.5, 1.5),
+                                blurRadius: 0,
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            Icons.edit,
+                            size: 13,
+                            color: AppColors.ink,
+                          ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -558,65 +758,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   height: 1.1,
                 ),
               ),
-              const SizedBox(height: 0),
-              Text(
-                user.name.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  height: 1.2,
-                ),
-              ),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: _openNameEditor,
-                child: Container(
-                  width: 28,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: AppColors.paper,
-                    border: Border.all(color: AppColors.ink, width: 1.5),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: AppColors.ink,
-                        offset: Offset(1.5, 1.5),
-                        blurRadius: 0,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Text(
+                      user.name.toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        height: 1.2,
                       ),
-                    ],
+                    ),
                   ),
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.edit, size: 13, color: AppColors.ink),
-                ),
+                  if (!widget.readOnly) ...[
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: _openNameEditor,
+                      child: Container(
+                        width: 28,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: AppColors.paper,
+                          border: Border.all(color: AppColors.ink, width: 1.5),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: AppColors.ink,
+                              offset: Offset(1.5, 1.5),
+                              blurRadius: 0,
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.edit,
+                          size: 13,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
+              if (user.points != null) ...[
+                const SizedBox(height: 8),
+                _buildPointsBadge(user.points!),
+                const SizedBox(height: 6),
+              ],
               const SizedBox(height: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  GestureDetector(
-                    onTap: _openDescriptionEditor,
-                    child: Container(
-                      width: 28,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: AppColors.paper,
-                        border: Border.all(color: AppColors.ink, width: 1.5),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: AppColors.ink,
-                            offset: Offset(1.5, 1.5),
-                            blurRadius: 0,
-                          ),
-                        ],
-                      ),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.edit,
-                        size: 13,
-                        color: AppColors.ink,
+                  if (!widget.readOnly) ...[
+                    GestureDetector(
+                      onTap: _openDescriptionEditor,
+                      child: Container(
+                        width: 28,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: AppColors.paper,
+                          border: Border.all(color: AppColors.ink, width: 1.5),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: AppColors.ink,
+                              offset: Offset(1.5, 1.5),
+                              blurRadius: 0,
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.edit,
+                          size: 13,
+                          color: AppColors.ink,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
+                    const SizedBox(height: 8),
+                  ],
                   if (user.description.isNotEmpty)
                     Container(
                       width: double.infinity,
@@ -645,7 +864,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     )
                   else
                     GestureDetector(
-                      onTap: _openDescriptionEditor,
+                      onTap: widget.readOnly ? null : _openDescriptionEditor,
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(10),
@@ -711,27 +930,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 letterSpacing: 1.5,
               ),
             ),
-            const Spacer(),
-            GestureDetector(
-              onTap: _openSocialLinksScreen,
-              child: Container(
-                width: 28,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: AppColors.paper,
-                  border: Border.all(color: AppColors.ink, width: 1.5),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: AppColors.ink,
-                      offset: Offset(1.5, 1.5),
-                      blurRadius: 0,
-                    ),
-                  ],
+            if (!widget.readOnly) ...[
+              const Spacer(),
+              GestureDetector(
+                onTap: _openSocialLinksScreen,
+                child: Container(
+                  width: 28,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: AppColors.paper,
+                    border: Border.all(color: AppColors.ink, width: 1.5),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: AppColors.ink,
+                        offset: Offset(1.5, 1.5),
+                        blurRadius: 0,
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.edit, size: 13, color: AppColors.ink),
                 ),
-                alignment: Alignment.center,
-                child: const Icon(Icons.edit, size: 13, color: AppColors.ink),
               ),
-            ),
+            ],
           ],
         ),
         const SizedBox(height: 10),
@@ -785,27 +1006,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 letterSpacing: 1.5,
               ),
             ),
-            const Spacer(),
-            GestureDetector(
-              onTap: _openFavoriteSongEditor,
-              child: Container(
-                width: 28,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: AppColors.paper,
-                  border: Border.all(color: AppColors.ink, width: 1.5),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: AppColors.ink,
-                      offset: Offset(1.5, 1.5),
-                      blurRadius: 0,
-                    ),
-                  ],
+            if (!widget.readOnly) ...[
+              const Spacer(),
+              GestureDetector(
+                onTap: _openFavoriteSongEditor,
+                child: Container(
+                  width: 28,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: AppColors.paper,
+                    border: Border.all(color: AppColors.ink, width: 1.5),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: AppColors.ink,
+                        offset: Offset(1.5, 1.5),
+                        blurRadius: 0,
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.edit, size: 13, color: AppColors.ink),
                 ),
-                alignment: Alignment.center,
-                child: const Icon(Icons.edit, size: 13, color: AppColors.ink),
               ),
-            ),
+            ],
           ],
         ),
         const SizedBox(height: 10),
@@ -822,7 +1045,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildEmptyPlayer() {
     return GestureDetector(
-      onTap: _openFavoriteSongEditor,
+      onTap: widget.readOnly ? null : _openFavoriteSongEditor,
       child: RetroCard(
         padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
         child: Row(
@@ -934,6 +1157,245 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (_) {
       return isoDate;
     }
+  }
+
+  Widget _buildCompactNotes() {
+    final int totalNotesCount = _totalNotesCount;
+    final int visibleCount = _notesLoading || _notesError != null
+        ? 0
+        : _latestNotes.length.clamp(0, 4);
+    final int remainingCount = (totalNotesCount - visibleCount).clamp(
+      0,
+      totalNotesCount,
+    );
+
+    return RetroCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: _openVisitedNotesBook,
+            child: const RetroSectionHeader(
+              title: 'LATEST 4 NOTES',
+              backgroundColor: AppColors.yellow,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.orange,
+                        border: Border.all(color: AppColors.ink, width: 1.5),
+                      ),
+                      child: Text(
+                        'TOTAL: $totalNotesCount',
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 8,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.paper,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: _openVisitedNotesBook,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.cyan,
+                          border: Border.all(color: AppColors.ink, width: 1.5),
+                        ),
+                        child: const Text(
+                          'OPEN BOOK',
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 8,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.ink,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (_canSendNote) ...[
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: _openSendNote,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1DB954),
+                            border: Border.all(
+                              color: AppColors.ink,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: const Text(
+                            'SEND NOTE',
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 8,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.paper,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _notesLoading
+                      ? 'Loading notes...'
+                      : _notesError != null
+                      ? 'Notes currently unavailable.'
+                      : totalNotesCount == 0
+                      ? 'No notes yet.'
+                      : 'Showing $visibleCount of $totalNotesCount notes — $remainingCount more notes inside the Notes Book.',
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 8,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.muted,
+                  ),
+                ),
+                if (_notesLoading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: Text(
+                        'Loading...',
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 10,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                    ),
+                  )
+                else if (_notesError != null)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: Text(
+                        'Notes currently unavailable.',
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 10,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                    ),
+                  )
+                else if (totalNotesCount == 0)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: Text(
+                        'No notes yet.',
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 10,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  for (final note in _latestNotes.take(4))
+                    NoteCard(
+                      senderName: note.senderName.isNotEmpty
+                          ? note.senderName
+                          : 'Anonymous',
+                      senderPhotoUrl: note.senderPhotoUrl,
+                      date: note.createdAt.isNotEmpty
+                          ? _formatDate(note.createdAt)
+                          : '',
+                      content: note.content,
+                      maxLines: 2,
+                    ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool get _canSendNote {
+    if (!widget.readOnly) return false;
+    if (widget.userId == null) return false;
+    final visitedId = int.tryParse(widget.userId!);
+    if (visitedId == null || visitedId == 0) return false;
+    if (_currentUserId.isNotEmpty && _currentUserId == widget.userId) {
+      return false;
+    }
+    return true;
+  }
+
+  void _openVisitedNotesBook() {
+    final visitedUserId = widget.userId;
+    if (visitedUserId == null) return;
+    Navigator.of(context)
+        .push<bool>(
+          MaterialPageRoute(
+            builder: (context) => Scaffold(
+              backgroundColor: AppColors.background,
+              body: RetroGridBackground(
+                child: SafeArea(
+                  child: NotesOpenBookScreen(
+                    onBackToProfile: () => Navigator.pop(context, true),
+                    openedFromProfile: true,
+                    userId: visitedUserId,
+                    readOnly: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        )
+        .then((_) {
+          if (mounted) _loadLatestNotes(widget.userId!);
+        });
+  }
+
+  void _openSendNote() {
+    final visitedId = int.tryParse(widget.userId ?? '');
+    if (visitedId == null || visitedId == 0) return;
+
+    Navigator.of(context)
+        .push<bool>(
+          MaterialPageRoute(
+            builder: (_) => SendNoteScreen(
+              recipientId: visitedId,
+              recipientName: _user.name,
+            ),
+          ),
+        )
+        .then((success) {
+          if (success == true && mounted) {
+            _loadLatestNotes(widget.userId!);
+          }
+        });
   }
 
   Widget _buildLatestNotes() {
@@ -1344,4 +1806,16 @@ class _PhotoPlaceholder extends StatelessWidget {
       ),
     );
   }
+}
+
+String _formatPoints(int points) {
+  final str = points.toString();
+  final buffer = StringBuffer();
+  for (int i = 0; i < str.length; i++) {
+    if (i > 0 && (str.length - i) % 3 == 0) {
+      buffer.write(',');
+    }
+    buffer.write(str[i]);
+  }
+  return buffer.toString();
 }

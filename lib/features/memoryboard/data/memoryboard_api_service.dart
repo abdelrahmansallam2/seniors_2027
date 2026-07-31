@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_constants.dart';
+import '../memory_model.dart';
 
 class MemoryboardApiService {
   final ApiClient _client;
@@ -16,17 +17,13 @@ class MemoryboardApiService {
     return _client.get(ApiConstants.memoryBoardMyPhotos);
   }
 
-  Future<Response> uploadPhoto({
-    required String filePath,
-    String? description,
-  }) {
-    return _client.upload(
+  Future<Memory> uploadPhoto({required String filePath}) async {
+    final response = await _client.upload(
       ApiConstants.memoryBoardPhotos,
       filePath: filePath,
-      extraFields: description != null && description.isNotEmpty
-          ? {'description': description}
-          : null,
+      fieldName: 'photo',
     );
+    return Memory.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<Response> deletePhoto(String id) {

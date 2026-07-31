@@ -25,6 +25,10 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 1500));
     await tester.pumpAndSettle();
+    await tester.runAsync(
+      () => Future.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
 
     expect(find.text('ONE YEAR,\nA MILLION'), findsOneWidget);
     expect(find.text('MEMORIES'), findsOneWidget);

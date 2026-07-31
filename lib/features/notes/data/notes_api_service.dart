@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/api_constants.dart';
+import '../models/note.dart';
 
 class NotesApiService {
   final ApiClient _client;
@@ -32,5 +33,20 @@ class NotesApiService {
 
   Future<Response> deleteNote(String noteId) {
     return _client.delete(ApiConstants.noteById(noteId));
+  }
+
+  Future<Note> createNote({
+    required int recipientId,
+    required String content,
+  }) async {
+    final response = await _client.post(
+      ApiConstants.notes,
+      data: {'recipientId': recipientId, 'content': content},
+    );
+    final data = response.data;
+    if (data is Map<String, dynamic>) {
+      return Note.fromJson(data);
+    }
+    throw Exception('Invalid response from server.');
   }
 }
