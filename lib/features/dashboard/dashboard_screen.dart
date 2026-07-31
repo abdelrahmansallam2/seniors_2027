@@ -28,11 +28,13 @@ class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     required this.onOpenNotes,
     this.apiService,
+    this.highlightsApiService,
     super.key,
   });
 
   final VoidCallback onOpenNotes;
   final DashboardApiService? apiService;
+  final DailyHighlightsApiService? highlightsApiService;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -42,7 +44,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late final DashboardApiService _api =
       widget.apiService ?? DashboardApiService(ApiClient());
   late final DailyHighlightsApiService _highlightsApi =
-      DailyHighlightsApiService(ApiClient());
+      widget.highlightsApiService ?? DailyHighlightsApiService(ApiClient());
 
   List<Announcement> _announcements = [];
   List<Event> _events = [];
@@ -58,6 +60,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _dashboardRequestInFlight = false;
   DateTime? _lastSuccessfulLoad;
   int _dashboardRequestId = 0;
+  int _announcementsVersion = 0;
 
   @override
   void initState() {
@@ -95,14 +98,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _eventsError = null;
       _highlightsError = null;
     });
+    final announcementsVersionAtStart = _announcementsVersion;
     try {
       final announcements = await _api.getAnnouncements();
       if (!mounted || requestId != _dashboardRequestId) return;
-      setState(() {
-        _announcements = announcements;
-        _isLoading = false;
-        _lastSuccessfulLoad = DateTime.now();
-      });
+      if (announcementsVersionAtStart == _announcementsVersion) {
+        setState(() {
+          _announcements = announcements;
+          _isLoading = false;
+          _lastSuccessfulLoad = DateTime.now();
+        });
+      }
     } on ApiException catch (e) {
       if (!mounted || requestId != _dashboardRequestId) return;
       setState(() {
@@ -231,6 +237,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final updated = await _api.voteInPoll(announcementId, optionLabel);
       if (!mounted) return;
       setState(() {
+        _announcementsVersion++;
         final index = _announcements.indexWhere((a) => a.id == announcementId);
         if (index >= 0) {
           _announcements = [
