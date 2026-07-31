@@ -351,13 +351,17 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
             childAspectRatio: 0.72,
           ),
           itemBuilder: (context, index) {
+            final memory = pageMemories[index];
             final rotation = (index % 2 == 0 ? -1.5 : 1.5) * math.pi / 180;
+            final key = memory.id.isNotEmpty
+                ? ValueKey<String>('memory_${memory.id}')
+                : ValueKey<String>(
+                    'memory_${memory.id}_${memory.imageUrl ?? ''}',
+                  );
             return GestureDetector(
-              onTap: () => _showImagePreview(pageMemories[index]),
-              child: _PolaroidCard(
-                memory: pageMemories[index],
-                rotation: rotation,
-              ),
+              key: key,
+              onTap: () => _showImagePreview(memory),
+              child: _PolaroidCard(memory: memory, rotation: rotation),
             );
           },
         ),
@@ -386,6 +390,10 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
 
   void _showImagePreview(Memory memory) {
     if (memory.imageUrl == null || memory.imageUrl!.isEmpty) return;
+
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final previewCacheWidth = (500 * dpr).round().clamp(500, 1600);
+    final previewCacheHeight = (420 * dpr).round().clamp(420, 1600);
 
     showGeneralDialog(
       context: context,
@@ -427,6 +435,8 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
                             child: Image.network(
                               memory.imageUrl!,
                               fit: BoxFit.contain,
+                              cacheWidth: previewCacheWidth,
+                              cacheHeight: previewCacheHeight,
                               loadingBuilder: (_, child, progress) {
                                 if (progress == null) return child;
                                 return const SizedBox(
