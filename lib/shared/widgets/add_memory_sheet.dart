@@ -1,10 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
-import 'package:seniors_27/shared/widgets/retro_text_field.dart';
 
 class AddMemorySheet extends StatefulWidget {
   final Future<void> Function(String filePath, String? description)?
@@ -33,7 +33,6 @@ class AddMemorySheet extends StatefulWidget {
 class _AddMemorySheetState extends State<AddMemorySheet> {
   final ImagePicker _picker = ImagePicker();
   XFile? _image;
-  final TextEditingController _descriptionController = TextEditingController();
   bool _isSubmitting = false;
 
   Future<void> _pickImage(ImageSource source) async {
@@ -57,37 +56,33 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
     if (_image == null || _isSubmitting) return;
     setState(() => _isSubmitting = true);
     try {
-      await widget.onMemorySubmitted?.call(
-        _image!.path,
-        _descriptionController.text,
-      );
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Memory submitted for approval.'),
-            backgroundColor: AppColors.ink,
-          ),
-        );
-      }
+      await widget.onMemorySubmitted?.call(_image!.path, null);
     } catch (e) {
       if (mounted) {
+        String message;
+        if (e is ApiException) {
+          if (e.statusCode == 429) {
+            message =
+                'Too many upload attempts. Please wait a moment and try again.';
+          } else if (e.statusCode == 400) {
+            message = e.data is Map
+                ? (e.data as Map)['message']?.toString() ??
+                      (e.data as Map)['error']?.toString() ??
+                      'Invalid request. Please try again.'
+                : 'Invalid request. Please try again.';
+          } else {
+            message = 'Error submitting memory: $e';
+          }
+        } else {
+          message = 'Error submitting memory: $e';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error submitting memory: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text(message), backgroundColor: Colors.red),
         );
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
-  }
-
-  @override
-  void dispose() {
-    _descriptionController.dispose();
-    super.dispose();
   }
 
   @override
@@ -117,34 +112,15 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
           ),
           const SizedBox(height: 24),
           if (_image == null) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: RetroButton(
-                    label: 'CAMERA',
-                    height: 50,
-                    backgroundColor: AppColors.cyan,
-                    onPressed: () => _pickImage(ImageSource.camera),
-                    textStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: RetroButton(
-                    label: 'GALLERY',
-                    height: 50,
-                    backgroundColor: AppColors.yellow,
-                    onPressed: () => _pickImage(ImageSource.gallery),
-                    textStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ],
+            RetroButton(
+              label: 'GALLERY',
+              height: 50,
+              backgroundColor: AppColors.yellow,
+              onPressed: () => _pickImage(ImageSource.gallery),
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ] else ...[
             Center(
@@ -155,7 +131,10 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                     child: SizedBox(
                       height: 200,
                       width: double.infinity,
-                      child: Image.file(File(_image!.path), fit: BoxFit.cover),
+                      child: Image.file(
+                        File(_image!.path),
+                        fit: BoxFit.contain,
+                      ),
                     ),
                   ),
                   Positioned(
@@ -175,20 +154,6 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'DESCRIPTION (OPTIONAL)',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-                color: AppColors.muted,
-              ),
-            ),
-            const SizedBox(height: 8),
-            RetroTextField(
-              controller: _descriptionController,
-              hintText: 'What happened?',
             ),
             const SizedBox(height: 32),
             SizedBox(

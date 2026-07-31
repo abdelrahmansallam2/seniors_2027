@@ -80,11 +80,7 @@ class _FavoriteSongScreenState extends State<FavoriteSongScreen> {
     });
 
     try {
-      final response = await _api.updateFavoriteSong(embedUrl);
-      final returned = response.data['favoriteSongEmbedUrl'] as String?;
-      if (returned != null && returned.isNotEmpty) {
-        debugPrint('[FavoriteSong] server stored: $returned');
-      }
+      await _api.updateFavoriteSong(embedUrl);
       if (mounted) Navigator.of(context).pop(true);
     } catch (_) {
       if (mounted) {

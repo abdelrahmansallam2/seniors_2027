@@ -8,11 +8,19 @@ class SeniorsApiService {
 
   SeniorsApiService(this._client);
 
-  Future<Response> getUsers({int pageNumber = 1, int pageSize = 10}) {
-    return _client.get(
-      ApiConstants.users,
-      queryParameters: {'pageNumber': pageNumber, 'pageSize': pageSize},
-    );
+  Future<Response> getUsers({
+    int pageNumber = 1,
+    int pageSize = 10,
+    String? search,
+  }) {
+    final params = <String, dynamic>{
+      'pageNumber': pageNumber,
+      'pageSize': pageSize,
+    };
+    if (search != null && search.isNotEmpty) {
+      params['search'] = search;
+    }
+    return _client.get(ApiConstants.users, queryParameters: params);
   }
 
   Future<Response> getUserById(String id) {

@@ -4,6 +4,7 @@ import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/constants/app_assets.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
+import 'package:seniors_27/core/utils/app_log.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
 import 'package:seniors_27/features/dashboard/data/daily_highlights_api_service.dart';
 import 'package:seniors_27/features/dashboard/data/dashboard_api_service.dart';
@@ -11,14 +12,12 @@ import 'package:seniors_27/features/dashboard/models/announcement.dart';
 import 'package:seniors_27/features/dashboard/models/daily_highlight.dart';
 import 'package:seniors_27/features/dashboard/models/event.dart';
 import 'package:seniors_27/features/dashboard/widgets/announcement_card.dart';
-import 'package:seniors_27/features/dashboard/widgets/challenge_poll_announcement_card.dart';
-import 'package:seniors_27/features/dashboard/widgets/challenge_preview_card.dart';
-import 'package:seniors_27/features/dashboard/widgets/challenges_empty_state.dart';
+
 import 'package:seniors_27/features/dashboard/widgets/countdown_board_row.dart';
-import 'package:seniors_27/features/dashboard/widgets/dashboard_upload_placeholder.dart';
 import 'package:seniors_27/features/dashboard/widgets/event_card.dart';
 import 'package:seniors_27/features/dashboard/widgets/events_empty_state.dart';
-import 'package:seniors_27/shared/widgets/add_memory_sheet.dart';
+import 'package:seniors_27/features/dashboard/add_highlight_sheet.dart';
+import 'package:seniors_27/features/dashboard/daily_highlights_book_screen.dart';
 import 'package:seniors_27/shared/widgets/app_logo.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
@@ -49,72 +48,113 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Event> _events = [];
   List<DailyHighlight> _highlights = [];
   bool _isLoading = true;
+  bool _eventsLoading = true;
   bool _highlightsLoading = true;
   String? _error;
+  String? _eventsError;
   String? _highlightsError;
+  final Set<String> _votingAnnouncementIds = {};
+
+  bool _dashboardRequestInFlight = false;
+  DateTime? _lastSuccessfulLoad;
+  int _dashboardRequestId = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadData(trigger: 'initial');
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({
+    bool forceRefresh = false,
+    String trigger = 'unknown',
+  }) async {
+    if (_dashboardRequestInFlight) {
+      appDebugLog('[Dashboard] blocked duplicate trigger=$trigger');
+      return;
+    }
+
+    final isFresh =
+        _lastSuccessfulLoad != null &&
+        DateTime.now().difference(_lastSuccessfulLoad!) <
+            const Duration(minutes: 1);
+
+    if (!forceRefresh && isFresh) {
+      appDebugLog('[Dashboard] using fresh state trigger=$trigger');
+      return;
+    }
+
+    final requestId = ++_dashboardRequestId;
+    _dashboardRequestInFlight = true;
+
     setState(() {
-      _isLoading = true;
-      _highlightsLoading = true;
+      _isLoading = _announcements.isEmpty;
+      _eventsLoading = _events.isEmpty;
+      _highlightsLoading = _highlights.isEmpty;
       _error = null;
+      _eventsError = null;
       _highlightsError = null;
     });
     try {
-      final results = await Future.wait([
-        _api.getAnnouncements(),
-        _api.getEvents(),
-        _highlightsApi.getActive(),
-      ]);
-      final announcementsData = results[0].data;
-      final eventsData = results[1].data;
-      final highlightsData = results[2].data;
-      if (!mounted) return;
+      final announcements = await _api.getAnnouncements();
+      if (!mounted || requestId != _dashboardRequestId) return;
       setState(() {
-        _announcements = _parseAnnouncements(announcementsData);
-        _events = _parseEvents(eventsData);
-        _highlights = _parseHighlights(highlightsData);
+        _announcements = announcements;
         _isLoading = false;
-        _highlightsLoading = false;
+        _lastSuccessfulLoad = DateTime.now();
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestId != _dashboardRequestId) return;
       setState(() {
         _error = e.message;
-        _highlightsError = e.message;
         _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _dashboardRequestId) return;
+      setState(() {
+        _error = 'Something went wrong. Please try again.';
+        _isLoading = false;
+      });
+    }
+    try {
+      final eventsResponse = await _api.getEvents();
+      if (!mounted || requestId != _dashboardRequestId) return;
+      setState(() {
+        _events = _parseEvents(eventsResponse.data);
+        _eventsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _dashboardRequestId) return;
+      setState(() {
+        _eventsError = 'Could not load upcoming events.';
+        _eventsLoading = false;
+      });
+    }
+    try {
+      final highlightsResponse = await _highlightsApi.getActive();
+      if (!mounted || requestId != _dashboardRequestId) return;
+      setState(() {
+        _highlights = _parseHighlights(highlightsResponse.data);
         _highlightsLoading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || requestId != _dashboardRequestId) return;
       setState(() {
-        _error = 'Something went wrong. Please try again.';
-        _highlightsError = 'Something went wrong. Please try again.';
-        _isLoading = false;
+        _highlightsError = 'Could not load highlights.';
         _highlightsLoading = false;
       });
+    } finally {
+      if (mounted && requestId == _dashboardRequestId) {
+        _dashboardRequestInFlight = false;
+      }
     }
-  }
-
-  List<Announcement> _parseAnnouncements(dynamic data) {
-    if (data is List) {
-      return data
-          .map((item) => Announcement.fromJson(item as Map<String, dynamic>))
-          .toList();
-    }
-    return [];
   }
 
   List<Event> _parseEvents(dynamic data) {
     if (data is List) {
       return data
-          .map((item) => Event.fromJson(item as Map<String, dynamic>))
+          .whereType<Map>()
+          .map((item) => Event.fromJson(Map<String, dynamic>.from(item)))
           .toList();
     }
     return [];
@@ -129,14 +169,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return [];
   }
 
-  Future<void> _handleAddHighlight(String filePath, String? description) async {
-    await _highlightsApi.upload(filePath: filePath, description: description);
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Highlight submitted.')));
-      _loadHighlights();
-    }
+  Future<void> _handleAddHighlight({
+    required String filePath,
+    String? captionText,
+    double? captionYPercent,
+    List<int> mentionUserIds = const [],
+  }) async {
+    await _highlightsApi.upload(
+      filePath: filePath,
+      captionText: captionText,
+      captionYPercent: captionYPercent,
+      mentionUserIds: mentionUserIds,
+    );
+    if (!mounted) return;
+    Navigator.pop(context);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Daily highlight added successfully.'),
+        backgroundColor: AppColors.ink,
+      ),
+    );
+    _loadHighlights();
+  }
+
+  void _openHighlightsBook({int initialIndex = 0}) {
+    if (_highlights.isEmpty) return;
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Daily Highlights Book',
+      barrierColor: Colors.transparent,
+      pageBuilder: (_, _, _) {
+        return DailyHighlightsBookScreen(
+          highlights: _highlights,
+          onDashboardRefresh: _loadHighlights,
+          initialIndex: initialIndex,
+        );
+      },
+    );
   }
 
   Future<void> _loadHighlights() async {
@@ -150,6 +221,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
       });
     } catch (_) {
       if (mounted) setState(() => _highlightsLoading = false);
+    }
+  }
+
+  Future<void> _handleVote(String announcementId, String optionLabel) async {
+    if (_votingAnnouncementIds.contains(announcementId)) return;
+    setState(() => _votingAnnouncementIds.add(announcementId));
+    try {
+      final updated = await _api.voteInPoll(announcementId, optionLabel);
+      if (!mounted) return;
+      setState(() {
+        final index = _announcements.indexWhere((a) => a.id == announcementId);
+        if (index >= 0) {
+          _announcements = [
+            for (var i = 0; i < _announcements.length; i++)
+              if (i == index) updated else _announcements[i],
+          ];
+        }
+        _votingAnnouncementIds.remove(announcementId);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _votingAnnouncementIds.remove(announcementId));
     }
   }
 
@@ -190,18 +283,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 highlights: _highlights,
                 isLoading: _highlightsLoading,
                 error: _highlightsError,
-                onAddToday: () => AddMemorySheet.show(
+                onAddToday: () => AddHighlightSheet.show(
                   context,
-                  onMemorySubmitted: _handleAddHighlight,
+                  onHighlightSubmitted: _handleAddHighlight,
                 ),
-                onRetry: _loadData,
+                onOpenBook: (index) => _openHighlightsBook(initialIndex: index),
+                onRetry: () => _loadData(forceRefresh: true, trigger: 'retry'),
               ),
               const SizedBox(height: 26),
               _buildAnnouncementsSection(),
               const SizedBox(height: 26),
               _buildUpcomingEventsSection(),
-              const SizedBox(height: 26),
-              const _ChallengesPreviewSection(),
             ],
           ),
         ),
@@ -216,14 +308,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_error != null) {
       return _buildErrorSection('ANNOUNCEMENTS', AppColors.magenta);
     }
-    return _AnnouncementsSection(announcements: _announcements);
+    return _AnnouncementsSection(
+      announcements: _announcements,
+      votingAnnouncementIds: _votingAnnouncementIds,
+      onVote: _handleVote,
+    );
   }
 
   Widget _buildUpcomingEventsSection() {
-    if (_isLoading) {
+    if (_eventsLoading) {
       return _buildLoadingSection('UPCOMING_EVENTS', AppColors.orange);
     }
-    if (_error != null) {
+    if (_eventsError != null) {
       return _buildErrorSection('UPCOMING_EVENTS', AppColors.orange);
     }
     return _UpcomingEventsSection(events: _events);
@@ -281,7 +377,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: RetroButton(
               label: 'Retry',
               height: 32,
-              onPressed: _loadData,
+              onPressed: () => _loadData(forceRefresh: true, trigger: 'retry'),
               textStyle: const TextStyle(
                 fontWeight: FontWeight.w900,
                 fontSize: 10,
@@ -342,14 +438,19 @@ class _DashboardHeroCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: const Text(
-                      'REMEMBERED',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 34,
-                        height: 1,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.8,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'REMEMBERED',
+                        maxLines: 1,
+                        softWrap: false,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 34,
+                          height: 1,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.8,
+                        ),
                       ),
                     ),
                   ),
@@ -391,6 +492,7 @@ class _DailyHighlightsSection extends StatelessWidget {
     required this.isLoading,
     required this.error,
     required this.onAddToday,
+    required this.onOpenBook,
     required this.onRetry,
   });
 
@@ -398,6 +500,7 @@ class _DailyHighlightsSection extends StatelessWidget {
   final bool isLoading;
   final String? error;
   final VoidCallback onAddToday;
+  final void Function(int index) onOpenBook;
   final VoidCallback onRetry;
 
   @override
@@ -425,242 +528,358 @@ class _DailyHighlightsSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          _buildContent(context),
+          _buildBookCard(context),
           const SizedBox(height: 12),
         ],
       ),
     );
   }
 
-  Widget _buildContent(BuildContext context) {
+  Widget _buildBookCard(BuildContext context) {
+    final bool canOpen = !isLoading && error == null && highlights.isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: GestureDetector(
+        onTap: canOpen ? () => onOpenBook(0) : null,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.paper,
+            border: Border.all(color: AppColors.ink, width: 3),
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.ink,
+                offset: Offset(6, 7),
+                blurRadius: 0,
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Expanded(
+                    child: Text(
+                      "TODAY'S HIGHLIGHTS",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.ink,
+                        decoration: TextDecoration.none,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: canOpen ? () => onOpenBook(0) : null,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.cyan,
+                        border: Border.all(color: AppColors.ink, width: 2),
+                      ),
+                      child: const Text(
+                        'OPEN BOOK',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.0,
+                          color: AppColors.ink,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _buildBookCenter(context),
+              const SizedBox(height: 12),
+              _buildBookBottom(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBookCenter(BuildContext context) {
     if (isLoading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 20),
-        child: DashboardUploadPlaceholder(),
+      return const SizedBox(
+        height: 100,
+        child: Center(
+          child: Text(
+            'Loading highlights...',
+            style: TextStyle(
+              color: AppColors.muted,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ),
       );
     }
 
     if (error != null) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Column(
-          children: [
-            const Text(
-              'Could not load highlights.',
-              style: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                color: AppColors.muted,
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: 80,
-              child: RetroButton(
-                label: 'Retry',
-                height: 28,
-                onPressed: onRetry,
-                textStyle: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 9,
+      return SizedBox(
+        height: 100,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Could not load highlights.',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  decoration: TextDecoration.none,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: onRetry,
+                child: const Text(
+                  'TAP TO RETRY',
+                  style: TextStyle(
+                    color: AppColors.orange,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
+                    fontSize: 11,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     if (highlights.isEmpty) {
-      return Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: DashboardUploadPlaceholder(),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'click to open memories',
+      return const SizedBox(
+        height: 100,
+        child: Center(
+          child: Text(
+            'No highlights yet.',
             style: TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
+              color: AppColors.muted,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              decoration: TextDecoration.none,
             ),
           ),
-          const SizedBox(height: 12),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(18, 0, 18, 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Latest by admin',
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 8,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.muted,
+        ),
+      );
+    }
+
+    final int count = highlights.length.clamp(0, 3);
+    return SizedBox(
+      height: 110,
+      child: Center(
+        child: SizedBox(
+          width: 140,
+          height: 110,
+          child: Stack(
+            alignment: Alignment.center,
+            children: List.generate(count, (i) {
+              final h = highlights[i];
+              final int behindCount = count - 1 - i;
+              final double dx = behindCount * -14.0;
+              final double dy = behindCount * -6.0;
+              final double rotation = behindCount.isEven ? 0.05 : -0.05;
+              final double scale = 1.0 - behindCount * 0.03;
+
+              return Transform.rotate(
+                angle: rotation,
+                child: Transform.scale(
+                  scale: scale.clamp(0.8, 1.0),
+                  child: Transform.translate(
+                    offset: Offset(dx, dy),
+                    child: Container(
+                      width: 80,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        color: AppColors.paper,
+                        border: Border.all(color: AppColors.ink, width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: AppColors.ink,
+                            offset: Offset(2, 2),
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(3),
+                      child: ClipRect(
+                        child: Image.network(
+                          h.photoUrl ?? '',
+                          width: 74,
+                          height: 94,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => Container(
+                            color: AppColors.cyan,
+                            alignment: Alignment.center,
+                            child: const Text(
+                              'PHOTO',
+                              style: TextStyle(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 10,
+                                letterSpacing: 1.2,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBookBottom() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Expanded(
+          child: Text(
+            'Tap to open the archive.',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: AppColors.muted,
+              decoration: TextDecoration.none,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (!isLoading && error == null)
+          Text(
+            'TOTAL: ${highlights.length}',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: AppColors.ink,
+              decoration: TextDecoration.none,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _AnnouncementsSection extends StatelessWidget {
+  const _AnnouncementsSection({
+    required this.announcements,
+    required this.votingAnnouncementIds,
+    required this.onVote,
+  });
+
+  final List<Announcement> announcements;
+  final Set<String> votingAnnouncementIds;
+  final void Function(String announcementId, String optionLabel) onVote;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AnnouncementColors.paper,
+        border: Border.all(color: AnnouncementColors.ink, width: 3),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: AnnouncementColors.ink,
+            offset: Offset(4, 4),
+            blurRadius: 0,
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: AnnouncementColors.magenta,
+              border: Border.all(color: AnnouncementColors.ink, width: 2),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: const [
+                BoxShadow(
+                  color: AnnouncementColors.ink,
+                  offset: Offset(2, 2),
+                  blurRadius: 0,
+                ),
+              ],
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.notifications_outlined,
+                  size: 14,
+                  color: AnnouncementColors.ink,
+                ),
+                SizedBox(width: 5),
                 Text(
-                  'Today',
+                  'ANNOUNCEMENTS',
                   style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 8,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.muted,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: AnnouncementColors.ink,
+                    decoration: TextDecoration.none,
                   ),
                 ),
               ],
             ),
           ),
-        ],
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: SizedBox(
-        height: 170,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: highlights.length,
-          separatorBuilder: (context, index) => const SizedBox(width: 10),
-          itemBuilder: (context, index) {
-            final h = highlights[index];
-            return _HighlightPolaroid(highlight: h);
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _HighlightPolaroid extends StatelessWidget {
-  const _HighlightPolaroid({required this.highlight});
-
-  final DailyHighlight highlight;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 130,
-      child: Column(
-        children: [
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 30),
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                border: Border.all(color: AppColors.ink, width: 2.5),
-                boxShadow: const [
-                  BoxShadow(
-                    color: AppColors.ink,
-                    offset: Offset(4, 4),
-                    blurRadius: 0,
-                  ),
-                ],
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEEEEEE),
-                  border: Border.all(color: AppColors.ink, width: 1.2),
-                ),
-                child: Center(
-                  child: Text(
-                    _formatAuthor(highlight.authorName),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 7,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.muted,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            highlight.date,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 7,
-              fontWeight: FontWeight.w600,
-              color: AppColors.muted,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatAuthor(String name) {
-    if (name.isEmpty) return 'Today\'s memory';
-    return name;
-  }
-}
-
-class _AnnouncementsSection extends StatelessWidget {
-  const _AnnouncementsSection({required this.announcements});
-
-  final List<Announcement> announcements;
-
-  @override
-  Widget build(BuildContext context) {
-    return RetroCard(
-      padding: EdgeInsets.zero,
-      backgroundColor: AppColors.paper,
-      child: Column(
-        children: [
-          const RetroSectionHeader(
-            title: 'ANNOUNCEMENTS',
-            backgroundColor: AppColors.magenta,
-          ),
-          const SizedBox(height: 12),
-          const _AdminBadge(color: AppColors.pink),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: announcements.isEmpty
-                ? const _AnnouncementsEmptyState()
-                : Column(
-                    children: announcements.map((announcement) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: _buildAnnouncementCard(announcement),
-                      );
-                    }).toList(),
-                  ),
+            child: _AdminBadge(count: announcements.length),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 8),
+          announcements.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: const _AnnouncementsEmptyState(),
+                )
+              : Column(
+                  children: announcements.map((announcement) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: AnnouncementCard(
+                        announcement: announcement,
+                        isVoting: votingAnnouncementIds.contains(
+                          announcement.id,
+                        ),
+                        onVote: (label) => onVote(announcement.id, label),
+                        onWhoVoted: (option) =>
+                            showPollVotersDialog(context, option),
+                      ),
+                    );
+                  }).toList(),
+                ),
+          const SizedBox(height: 10),
         ],
       ),
     );
-  }
-
-  Widget _buildAnnouncementCard(Announcement announcement) {
-    switch (announcement.type) {
-      case AnnouncementType.challengePoll:
-      case AnnouncementType.poll:
-        return ChallengePollAnnouncementCard(
-          announcement: announcement,
-          onOptionTap: (id) {
-            debugPrint('Tapped poll option: $id');
-          },
-          onWhoVotedTap: (id) {
-            debugPrint('Who voted for option: $id');
-          },
-        );
-
-      case AnnouncementType.normalAnnouncement:
-      case AnnouncementType.event:
-      case AnnouncementType.memoryHighlight:
-        return AnnouncementCard(announcement: announcement);
-    }
   }
 }
 
@@ -675,6 +894,7 @@ class _AnnouncementsEmptyState extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.paper,
         border: Border.all(color: AppColors.ink, width: 2),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: const Column(
         children: [
@@ -711,97 +931,67 @@ class _UpcomingEventsSection extends StatelessWidget {
 
   final List<Event> events;
 
+  List<Event> get _sortedEvents {
+    final sorted = List<Event>.from(events);
+    sorted.sort((a, b) {
+      if (a.eventDate == null && b.eventDate == null) return 0;
+      if (a.eventDate == null) return 1;
+      if (b.eventDate == null) return -1;
+      return a.eventDate!.compareTo(b.eventDate!);
+    });
+    return sorted;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return RetroCard(
-      padding: EdgeInsets.zero,
-      backgroundColor: AppColors.paper,
+    final sorted = _sortedEvents;
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.paper,
+        border: Border.all(color: AppColors.ink, width: 3),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(color: AppColors.ink, offset: Offset(6, 7), blurRadius: 0),
+        ],
+      ),
       child: Column(
         children: [
-          const RetroSectionHeader(
-            title: 'UPCOMING_EVENTS',
-            backgroundColor: AppColors.orange,
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+            decoration: BoxDecoration(
+              color: AppColors.orange,
+              border: Border.all(color: AppColors.ink, width: 2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Text(
+              'UPCOMING_EVENTS',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                decoration: TextDecoration.none,
+              ),
+            ),
           ),
           const SizedBox(height: 18),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: CountdownBoardRow(count: events.length),
+            child: CountdownBoardRow(count: sorted.length),
           ),
           const SizedBox(height: 12),
-          if (events.isEmpty)
+          if (sorted.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 18),
               child: EventsEmptyState(),
             )
           else
-            ...events.map(
+            ...sorted.map(
               (event) => Padding(
                 padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-                child: EventCard(
-                  title: event.title,
-                  description: event.description,
-                  date: event.date,
-                ),
+                child: EventCard(event: event),
               ),
             ),
           const SizedBox(height: 18),
-        ],
-      ),
-    );
-  }
-}
-
-class _ChallengesPreviewSection extends StatelessWidget {
-  const _ChallengesPreviewSection();
-
-  @override
-  Widget build(BuildContext context) {
-    // Backend-ready placeholder list
-    final challenges = [];
-
-    return RetroCard(
-      padding: EdgeInsets.zero,
-      backgroundColor: AppColors.paper,
-      child: Column(
-        children: [
-          const RetroSectionHeader(
-            title: 'TOP_CHALLENGES',
-            backgroundColor: AppColors.yellow,
-          ),
-          const SizedBox(height: 14),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: challenges.isEmpty
-                ? const ChallengesEmptyState()
-                : Column(
-                    children: [
-                      ...challenges.asMap().entries.map((entry) {
-                        final i = entry.key;
-                        final challenge = entry.value;
-                        return ChallengePreviewCard(
-                          index: i + 1,
-                          title: challenge['title'] ?? '',
-                          votes: challenge['votes'] ?? 0,
-                        );
-                      }),
-                    ],
-                  ),
-          ),
-          const SizedBox(height: 10),
-          if (challenges.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-              child: RetroButton(
-                label: 'VIEW ALL CHALLENGES',
-                height: 40,
-                onPressed: () {},
-                textStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          if (challenges.isEmpty) const SizedBox(height: 10),
         ],
       ),
     );
@@ -809,32 +999,66 @@ class _ChallengesPreviewSection extends StatelessWidget {
 }
 
 class _AdminBadge extends StatelessWidget {
-  const _AdminBadge({required this.color});
+  const _AdminBadge({this.count = 0});
 
-  final Color color;
+  final int count;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.paper,
-        border: Border.all(color: AppColors.ink, width: 2),
+        color: AnnouncementColors.paper,
+        border: Border.all(color: AnnouncementColors.ink, width: 3),
+        borderRadius: BorderRadius.circular(10),
         boxShadow: const [
-          BoxShadow(color: AppColors.ink, offset: Offset(4, 4), blurRadius: 0),
+          BoxShadow(
+            color: AnnouncementColors.ink,
+            offset: Offset(6, 7),
+            blurRadius: 0,
+          ),
         ],
       ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
         children: [
-          Icon(Icons.campaign_outlined, size: 16, color: AppColors.ink),
-          SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AnnouncementColors.pinkBadge,
+              border: Border.all(color: AnnouncementColors.ink, width: 2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.campaign_outlined,
+                  size: 10,
+                  color: AnnouncementColors.ink,
+                ),
+                SizedBox(width: 3),
+                Text(
+                  'FRESH FROM ADMIN',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: AnnouncementColors.ink,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
           Text(
-            'Fresh from admin',
-            style: TextStyle(
+            '$count active post${count == 1 ? '' : 's'}',
+            style: const TextStyle(
               fontFamily: 'monospace',
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              color: AnnouncementColors.ink,
+              decoration: TextDecoration.none,
             ),
           ),
         ],

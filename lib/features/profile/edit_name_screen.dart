@@ -1,7 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/api/api_client.dart';
+import 'package:seniors_27/core/cache/current_user_cache.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
+import 'package:seniors_27/core/utils/app_log.dart';
 import 'package:seniors_27/features/profile/data/profile_api_service.dart';
 import 'package:seniors_27/features/profile/models/profile_user.dart';
 
@@ -33,7 +34,7 @@ class _EditNameScreenState extends State<EditNameScreen> {
   }
 
   Future<void> _save() async {
-    if (kDebugMode) debugPrint('[EditName] savePressed');
+    appDebugLog('[EditName] savePressed');
 
     final username = _controller.text.trim();
     if (username.isEmpty || username == widget.currentName.trim()) return;
@@ -44,16 +45,43 @@ class _EditNameScreenState extends State<EditNameScreen> {
     });
 
     try {
-      if (kDebugMode) debugPrint('[EditName] PUT started');
+      appDebugLog('[EditName] PUT started');
       await _api.updateUsername(username);
-      if (kDebugMode) debugPrint('[EditName] PUT success');
-      final response = await _api.getMe();
-      if (kDebugMode) debugPrint('[EditName] refresh success');
-      final data = response.data;
-      final user = ProfileUser.fromJson(
-        data is Map ? data as Map<String, dynamic> : {},
-      );
-      if (mounted) Navigator.of(context).pop(user.name);
+      appDebugLog('[EditName] PUT success');
+      ProfileUser? base;
+      try {
+        base = await CurrentUserCache.get(
+          fetcher: () async {
+            final response = await _api.getMe();
+            final data = response.data;
+            if (data is Map<String, dynamic>) {
+              return ProfileUser.fromJson(data);
+            }
+            throw const FormatException('unexpected /api/Auth/me payload');
+          },
+        );
+      } catch (_) {
+        base = CurrentUserCache.peek();
+      }
+      if (base != null) {
+        CurrentUserCache.set(
+          ProfileUser(
+            id: base.id,
+            name: username,
+            email: base.email,
+            role: base.role,
+            description: base.description,
+            gender: base.gender,
+            photoUrl: base.photoUrl,
+            points: base.points,
+            status: base.status,
+            favoriteSongEmbedUrl: base.favoriteSongEmbedUrl,
+          ),
+        );
+      } else {
+        CurrentUserCache.invalidate();
+      }
+      if (mounted) Navigator.of(context).pop(username);
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -70,13 +98,6 @@ class _EditNameScreenState extends State<EditNameScreen> {
     final hasChanged =
         trimmedName.isNotEmpty && trimmedName != widget.currentName.trim();
     final canSave = trimmedName.isNotEmpty && hasChanged && !_saving;
-
-    if (kDebugMode) {
-      debugPrint('[EditName] currentName: ${widget.currentName}');
-      debugPrint('[EditName] typedName: $trimmedName');
-      debugPrint('[EditName] hasChanged: $hasChanged');
-      debugPrint('[EditName] canSave: $canSave');
-    }
 
     return Scaffold(
       backgroundColor: AppColors.background,

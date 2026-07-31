@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/api/api_client.dart';
+import 'package:seniors_27/core/cache/current_user_cache.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/features/profile/data/profile_api_service.dart';
 import 'package:seniors_27/features/profile/models/profile_user.dart';
@@ -42,12 +43,40 @@ class _EditDescriptionScreenState extends State<EditDescriptionScreen> {
 
     try {
       await _api.updateDescription(text);
-      final response = await _api.getMe();
-      final data = response.data;
-      final user = ProfileUser.fromJson(
-        data is Map ? data as Map<String, dynamic> : {},
-      );
-      if (mounted) Navigator.of(context).pop(user.description);
+      ProfileUser? base;
+      try {
+        base = await CurrentUserCache.get(
+          fetcher: () async {
+            final response = await _api.getMe();
+            final data = response.data;
+            if (data is Map<String, dynamic>) {
+              return ProfileUser.fromJson(data);
+            }
+            throw const FormatException('unexpected /api/Auth/me payload');
+          },
+        );
+      } catch (_) {
+        base = CurrentUserCache.peek();
+      }
+      if (base != null) {
+        CurrentUserCache.set(
+          ProfileUser(
+            id: base.id,
+            name: base.name,
+            email: base.email,
+            role: base.role,
+            description: text,
+            gender: base.gender,
+            photoUrl: base.photoUrl,
+            points: base.points,
+            status: base.status,
+            favoriteSongEmbedUrl: base.favoriteSongEmbedUrl,
+          ),
+        );
+      } else {
+        CurrentUserCache.invalidate();
+      }
+      if (mounted) Navigator.of(context).pop(text);
     } catch (_) {
       if (mounted) {
         setState(() {
