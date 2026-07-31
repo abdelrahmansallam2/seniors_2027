@@ -38,12 +38,17 @@ class ProfileScreen extends StatefulWidget {
     required this.onOpenNotes,
     this.userId,
     this.readOnly = false,
+    this.registerRefresh,
+    this.onRefreshSuccess,
     super.key,
   });
 
   final VoidCallback onOpenNotes;
   final String? userId;
   final bool readOnly;
+  final void Function(Future<void> Function({bool force}) refresh)?
+  registerRefresh;
+  final VoidCallback? onRefreshSuccess;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -69,14 +74,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _totalNotesCount = 0;
   bool _notesLoading = true;
   String? _notesError;
+  VoidCallback? _notifyRefreshSuccess;
 
   @override
   void initState() {
     super.initState();
+    widget.registerRefresh?.call(refresh);
+    _notifyRefreshSuccess = widget.onRefreshSuccess;
     _loadProfile();
   }
 
-  Future<void> _loadProfile() async {
+  Future<void> refresh({bool force = true}) {
+    return _loadProfile(forceRefresh: force);
+  }
+
+  Future<void> _loadProfile({bool forceRefresh = false}) async {
     if (widget.readOnly) {
       await _loadVisitedProfile();
       return;
@@ -84,6 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       List<String>? fetchedLinks;
       final parsed = await CurrentUserCache.get(
+        forceRefresh: forceRefresh,
         fetcher: () async {
           final response = await _profileApi.getMe();
           final data = response.data;
@@ -108,6 +121,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _socialLinks = links;
           }
         });
+        _notifyRefreshSuccess?.call();
         _loadGallery(parsed.id);
         _loadLatestNotes(parsed.id);
       }
@@ -536,94 +550,102 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildContent(ProfileUser user) {
-    return SingleChildScrollView(
-      key: const PageStorageKey('profile_scroll'),
-      padding: const EdgeInsets.fromLTRB(22, 30, 22, 110),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (widget.readOnly)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: SizedBox(
-                width: 100,
-                child: GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppColors.paper,
-                      border: Border.all(color: AppColors.ink, width: 2),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: AppColors.ink,
-                          offset: Offset(3, 3),
-                          blurRadius: 0,
-                        ),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.arrow_back, size: 14, color: AppColors.ink),
-                        SizedBox(width: 4),
-                        Text(
-                          'BACK',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
+    return RefreshIndicator(
+      onRefresh: refresh,
+      child: SingleChildScrollView(
+        key: const PageStorageKey('profile_scroll'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(22, 30, 22, 110),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.readOnly)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: SizedBox(
+                  width: 100,
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.paper,
+                        border: Border.all(color: AppColors.ink, width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: AppColors.ink,
+                            offset: Offset(3, 3),
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.arrow_back,
+                            size: 14,
                             color: AppColors.ink,
                           ),
-                        ),
-                      ],
+                          SizedBox(width: 4),
+                          Text(
+                            'BACK',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              MainPageHeader(
-                title: widget.readOnly ? 'PROFILE' : 'My Profile',
-                subtitle: widget.readOnly
-                    ? (user.name.isNotEmpty
-                          ? user.name.toUpperCase()
-                          : 'VISITING')
-                    : 'Your senior identity.',
-              ),
-              Positioned(
-                top: 2,
-                right: 4,
-                child: RetroSticker(
-                  color: AppColors.magenta,
-                  width: 58,
-                  height: 20,
-                  angle: 0.12,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                MainPageHeader(
+                  title: widget.readOnly ? 'PROFILE' : 'My Profile',
+                  subtitle: widget.readOnly
+                      ? (user.name.isNotEmpty
+                            ? user.name.toUpperCase()
+                            : 'VISITING')
+                      : 'Your senior identity.',
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _buildTopSection(user),
-          const SizedBox(height: 20),
-          _buildSocialAndSpotify(),
-          const SizedBox(height: 20),
-          if (widget.readOnly)
-            _buildCompactNotes()
-          else
-            GestureDetector(
-              onTap: widget.onOpenNotes,
-              child: _buildLatestNotes(),
+                Positioned(
+                  top: 2,
+                  right: 4,
+                  child: RetroSticker(
+                    color: AppColors.magenta,
+                    width: 58,
+                    height: 20,
+                    angle: 0.12,
+                  ),
+                ),
+              ],
             ),
-          const SizedBox(height: 20),
-          _buildGallerySection(),
-          if (!widget.readOnly) ...[
-            const SizedBox(height: 28),
-            _buildLogoutButton(),
+            const SizedBox(height: 20),
+            _buildTopSection(user),
+            const SizedBox(height: 20),
+            _buildSocialAndSpotify(),
+            const SizedBox(height: 20),
+            if (widget.readOnly)
+              _buildCompactNotes()
+            else
+              GestureDetector(
+                onTap: widget.onOpenNotes,
+                child: _buildLatestNotes(),
+              ),
+            const SizedBox(height: 20),
+            _buildGallerySection(),
+            if (!widget.readOnly) ...[
+              const SizedBox(height: 28),
+              _buildLogoutButton(),
+            ],
+            const SizedBox(height: 24),
           ],
-          const SizedBox(height: 24),
-        ],
+        ),
       ),
     );
   }
