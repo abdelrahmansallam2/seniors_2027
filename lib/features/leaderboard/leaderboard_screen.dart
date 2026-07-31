@@ -11,7 +11,15 @@ import 'package:seniors_27/shared/widgets/retro_button.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
 
 class LeaderboardScreen extends StatefulWidget {
-  const LeaderboardScreen({super.key});
+  const LeaderboardScreen({
+    this.registerRefresh,
+    this.onRefreshSuccess,
+    super.key,
+  });
+
+  final void Function(Future<void> Function({bool force}) refresh)?
+  registerRefresh;
+  final VoidCallback? onRefreshSuccess;
 
   @override
   State<LeaderboardScreen> createState() => _LeaderboardScreenState();
@@ -21,17 +29,27 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   final _api = SeniorsApiService(ApiClient());
   List<SeniorStudent> _rankedSeniors = [];
   bool _isLoading = true;
+  bool _isFetching = false;
   String? _error;
+  VoidCallback? _notifyRefreshSuccess;
 
   @override
   void initState() {
     super.initState();
+    widget.registerRefresh?.call(refresh);
+    _notifyRefreshSuccess = widget.onRefreshSuccess;
     _loadData();
   }
 
-  Future<void> _loadData() async {
+  Future<void> refresh({bool force = true}) {
+    return _loadData(forceRefresh: force);
+  }
+
+  Future<void> _loadData({bool forceRefresh = false}) async {
+    if (_isFetching) return;
+    _isFetching = true;
     setState(() {
-      _isLoading = true;
+      _isLoading = _rankedSeniors.isEmpty;
       _error = null;
     });
     try {
@@ -43,18 +61,26 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       setState(() {
         _rankedSeniors = seniors;
         _isLoading = false;
+        _isFetching = false;
       });
+      _notifyRefreshSuccess?.call();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.message;
+        if (_rankedSeniors.isEmpty) {
+          _error = e.message;
+        }
         _isLoading = false;
+        _isFetching = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'Something went wrong. Please try again.';
+        if (_rankedSeniors.isEmpty) {
+          _error = 'Something went wrong. Please try again.';
+        }
         _isLoading = false;
+        _isFetching = false;
       });
     }
   }
@@ -75,18 +101,22 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      key: const PageStorageKey('leaderboard_scroll'),
-      padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
-      child: Column(
-        children: [
-          const MainPageHeader(
-            title: 'Leaderboard',
-            subtitle: 'All seniors ranked by points.',
-          ),
-          const SizedBox(height: 25),
-          _buildBody(),
-        ],
+    return RefreshIndicator(
+      onRefresh: refresh,
+      child: SingleChildScrollView(
+        key: const PageStorageKey('leaderboard_scroll'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
+        child: Column(
+          children: [
+            const MainPageHeader(
+              title: 'Leaderboard',
+              subtitle: 'All seniors ranked by points.',
+            ),
+            const SizedBox(height: 25),
+            _buildBody(),
+          ],
+        ),
       ),
     );
   }

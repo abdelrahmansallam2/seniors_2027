@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,7 +21,10 @@ class MainAppShell extends StatefulWidget {
   State<MainAppShell> createState() => _MainAppShellState();
 }
 
-class _MainAppShellState extends State<MainAppShell> {
+class _MainAppShellState extends State<MainAppShell>
+    with WidgetsBindingObserver {
+  static const Duration _resumeRefreshThreshold = Duration(seconds: 30);
+
   late int _currentIndex;
   late final List<Widget?> _screens;
   late final List<Widget Function()> _screenBuilders;
@@ -27,20 +32,80 @@ class _MainAppShellState extends State<MainAppShell> {
   final List<int> _tabHistory = [];
   DateTime? _lastBackPress;
 
+  final Map<int, Future<void> Function({bool force})> _tabRefresh = {};
+  final Map<int, DateTime> _lastSuccessfulRefresh = {};
+  final Set<int> _refreshingTabs = {};
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _currentIndex = widget.initialIndex.clamp(0, 4);
     _screenBuilders = [
-      () => DashboardScreen(onOpenNotes: _openNotes),
-      () => const SeniorsDirectoryScreen(),
-      () => const MemoryboardScreen(),
-      () => const LeaderboardScreen(),
-      () => ProfileScreen(onOpenNotes: _openNotes),
+      () => DashboardScreen(
+        onOpenNotes: _openNotes,
+        registerRefresh: (refresh) => _tabRefresh[0] = refresh,
+        onRefreshSuccess: () => _recordRefreshSuccess(0),
+      ),
+      () => SeniorsDirectoryScreen(
+        registerRefresh: (refresh) => _tabRefresh[1] = refresh,
+        onRefreshSuccess: () => _recordRefreshSuccess(1),
+      ),
+      () => MemoryboardScreen(
+        registerRefresh: (refresh) => _tabRefresh[2] = refresh,
+        onRefreshSuccess: () => _recordRefreshSuccess(2),
+      ),
+      () => LeaderboardScreen(
+        registerRefresh: (refresh) => _tabRefresh[3] = refresh,
+        onRefreshSuccess: () => _recordRefreshSuccess(3),
+      ),
+      () => ProfileScreen(
+        onOpenNotes: _openNotes,
+        registerRefresh: (refresh) => _tabRefresh[4] = refresh,
+        onRefreshSuccess: () => _recordRefreshSuccess(4),
+      ),
     ];
     _screens = List<Widget?>.filled(5, null);
     _screens[0] = _screenBuilders[0]();
     if (kDebugMode) debugPrint('[MainAppShell] created tab index=0');
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshVisibleTabOnResume();
+    }
+  }
+
+  void _recordRefreshSuccess(int index) {
+    _lastSuccessfulRefresh[index] = DateTime.now();
+  }
+
+  void _refreshVisibleTabOnResume() {
+    if (_notesOpen) return;
+    final last = _lastSuccessfulRefresh[_currentIndex];
+    final now = DateTime.now();
+    if (last != null && now.difference(last) < _resumeRefreshThreshold) {
+      return;
+    }
+    unawaited(_refreshTab(_currentIndex));
+  }
+
+  Future<void> _refreshTab(int index) async {
+    final refresh = _tabRefresh[index];
+    if (refresh == null || _refreshingTabs.contains(index)) return;
+    _refreshingTabs.add(index);
+    try {
+      await refresh(force: true);
+    } finally {
+      _refreshingTabs.remove(index);
+    }
   }
 
   void _ensureScreenCreated(int index) {
@@ -55,8 +120,11 @@ class _MainAppShellState extends State<MainAppShell> {
   void _selectTab(int index) {
     if (index == _currentIndex && !_notesOpen) {
       if (kDebugMode) {
-        debugPrint('[MainAppShell] ignored active tab index=$index');
+        debugPrint(
+          '[MainAppShell] re-tapped active tab, refreshing index=$index',
+        );
       }
+      unawaited(_refreshTab(index));
       return;
     }
     _ensureScreenCreated(index);

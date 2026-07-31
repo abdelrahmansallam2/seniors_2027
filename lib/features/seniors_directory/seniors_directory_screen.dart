@@ -14,7 +14,15 @@ import 'package:seniors_27/shared/widgets/retro_grid_background.dart';
 import 'package:seniors_27/shared/widgets/retro_sticker.dart';
 
 class SeniorsDirectoryScreen extends StatefulWidget {
-  const SeniorsDirectoryScreen({super.key});
+  const SeniorsDirectoryScreen({
+    this.registerRefresh,
+    this.onRefreshSuccess,
+    super.key,
+  });
+
+  final void Function(Future<void> Function({bool force}) refresh)?
+  registerRefresh;
+  final VoidCallback? onRefreshSuccess;
 
   @override
   State<SeniorsDirectoryScreen> createState() => _SeniorsDirectoryScreenState();
@@ -38,12 +46,22 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
   Timer? _debounce;
   String _currentSearchQuery = '';
   bool _isSearchMode = false;
+  VoidCallback? _notifyRefreshSuccess;
 
   @override
   void initState() {
     super.initState();
+    widget.registerRefresh?.call(refresh);
+    _notifyRefreshSuccess = widget.onRefreshSuccess;
     _searchController.addListener(_onSearchChanged);
     _loadSeniors();
+  }
+
+  Future<void> refresh({bool force = true}) {
+    return _loadSeniors(
+      page: _pageNumber,
+      search: _isSearchMode ? _currentSearchQuery : null,
+    );
   }
 
   @override
@@ -90,6 +108,7 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
         _allSeniors = seniors;
         _pageNumber = targetPage;
       });
+      _notifyRefreshSuccess?.call();
     } on ApiException catch (e) {
       if (!mounted || requestId != _requestId) return;
       setState(() {
@@ -144,36 +163,40 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
   @override
   Widget build(BuildContext context) {
     return RetroGridBackground(
-      child: SingleChildScrollView(
-        key: const PageStorageKey('directory_scroll'),
-        padding: const EdgeInsets.fromLTRB(22, 30, 22, 120),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Stack(
-              clipBehavior: Clip.none,
-              children: [
-                MainPageHeader(
-                  title: 'Seniors',
-                  subtitle: 'Find your classmates.',
-                ),
-                Positioned(
-                  top: 2,
-                  right: 4,
-                  child: RetroSticker(
-                    color: AppColors.magenta,
-                    width: 58,
-                    height: 20,
-                    angle: 0.12,
+      child: RefreshIndicator(
+        onRefresh: refresh,
+        child: SingleChildScrollView(
+          key: const PageStorageKey('directory_scroll'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(22, 30, 22, 120),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  MainPageHeader(
+                    title: 'Seniors',
+                    subtitle: 'Find your classmates.',
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 28),
-            SeniorsSearchBar(controller: _searchController),
-            const SizedBox(height: 32),
-            _buildBody(),
-          ],
+                  Positioned(
+                    top: 2,
+                    right: 4,
+                    child: RetroSticker(
+                      color: AppColors.magenta,
+                      width: 58,
+                      height: 20,
+                      angle: 0.12,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 28),
+              SeniorsSearchBar(controller: _searchController),
+              const SizedBox(height: 32),
+              _buildBody(),
+            ],
+          ),
         ),
       ),
     );
