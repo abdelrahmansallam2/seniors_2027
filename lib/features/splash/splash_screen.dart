@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/core/navigation/retro_page_route.dart';
@@ -38,6 +39,11 @@ class _SplashScreenState extends State<SplashScreen>
   late final Animation<double> _topStickerScale;
   late final Animation<double> _bottomStickerScale;
   bool _showMemoryStage = false;
+
+  bool _isCheckingSession = true;
+  bool _navigationStarted = false;
+  bool? _hasToken;
+  bool _memoryStageCompleted = false;
 
   @override
   void initState() {
@@ -112,6 +118,7 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
+    _checkSessionAndRedirect();
     _logoStageController.forward();
   }
 
@@ -156,18 +163,46 @@ class _SplashScreenState extends State<SplashScreen>
 
   void _onMemoryStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed || !mounted) return;
-    _checkSessionAndRedirect();
+    _memoryStageCompleted = true;
+    if (_hasToken == true && !_navigationStarted) {
+      _navigateToAppShell();
+    }
   }
 
   Future<void> _checkSessionAndRedirect() async {
-    final token = await TokenStorage().readToken();
-    if (!mounted) return;
-    if (token != null && token.isNotEmpty) {
-      Navigator.of(context).pushAndRemoveUntil(
-        RetroPageRoute<void>(builder: (_) => const MainAppShell()),
-        (route) => false,
-      );
+    if (kDebugMode) debugPrint('[Splash] session check started');
+    try {
+      final token = await TokenStorage().readToken();
+      if (!mounted) return;
+      final exists = token != null && token.isNotEmpty;
+      if (kDebugMode) {
+        debugPrint('[Splash] session check completed tokenExists=$exists');
+      }
+      setState(() {
+        _hasToken = exists;
+        _isCheckingSession = false;
+      });
+      if (_memoryStageCompleted && _hasToken == true && !_navigationStarted) {
+        _navigateToAppShell();
+      }
+    } catch (_) {
+      if (!mounted) return;
+      if (kDebugMode) debugPrint('[Splash] session check failed');
+      setState(() {
+        _hasToken = false;
+        _isCheckingSession = false;
+      });
     }
+  }
+
+  void _navigateToAppShell() {
+    if (!mounted || _navigationStarted) return;
+    if (kDebugMode) debugPrint('[Splash] authenticated navigation started');
+    _navigationStarted = true;
+    Navigator.of(context).pushAndRemoveUntil(
+      RetroPageRoute<void>(builder: (_) => const MainAppShell()),
+      (route) => false,
+    );
   }
 
   @override
@@ -354,17 +389,36 @@ class _SplashScreenState extends State<SplashScreen>
                     position: _buttonSlide,
                     child: ScaleTransition(
                       scale: _buttonScale,
-                      child: SizedBox(
-                        width: 255,
-                        child: RetroButton(
-                          label: 'LOGIN',
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              RetroPageRoute<void>(
-                                builder: (_) => const LoginEmailScreen(),
-                              ),
-                            );
-                          },
+                      child: IgnorePointer(
+                        ignoring: _isCheckingSession || _hasToken == true,
+                        child: Opacity(
+                          opacity: _isCheckingSession || _hasToken == true
+                              ? 0.0
+                              : 1.0,
+                          child: SizedBox(
+                            width: 255,
+                            child: RetroButton(
+                              label: 'LOGIN',
+                              onPressed: () {
+                                if (_navigationStarted) {
+                                  return;
+                                }
+                                if (kDebugMode) {
+                                  debugPrint(
+                                    '[Splash] login navigation started',
+                                  );
+                                }
+                                setState(() {
+                                  _navigationStarted = true;
+                                });
+                                Navigator.of(context).push(
+                                  RetroPageRoute<void>(
+                                    builder: (_) => const LoginEmailScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
                         ),
                       ),
                     ),

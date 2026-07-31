@@ -9,6 +9,7 @@ class ApiConstants {
   static const String me = '/api/Auth/me';
   static const String recognize = '/api/Auth/recognize';
   static const String uploadPhoto = '/api/Auth/upload-photo';
+  static const String mePhoto = '/api/auth/me/photo';
 
   // Users
   static const String users = '/api/Users';

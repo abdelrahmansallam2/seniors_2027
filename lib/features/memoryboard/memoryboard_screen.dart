@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/constants/app_assets.dart';
+import 'package:seniors_27/core/utils/app_log.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
 import 'package:seniors_27/features/memoryboard/data/memoryboard_api_service.dart';
@@ -26,6 +27,7 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
 
   List<Memory> _memories = [];
   bool _isLoading = true;
+  bool _isFetching = false;
   String? _error;
 
   @override
@@ -35,29 +37,42 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
   }
 
   Future<void> _loadData() async {
+    if (_isFetching) {
+      appDebugLog('[Memoryboard] request blocked because already loading');
+      return;
+    }
+    _isFetching = true;
     setState(() {
       _isLoading = true;
       _error = null;
     });
+    appDebugLog('[Memoryboard] request started');
     try {
       final response = await _api.getPhotos();
       final data = response.data;
       if (!mounted) return;
+      final parsed = _parseMemories(data);
+      appDebugLog('[Memoryboard] response count=${parsed.length}');
       setState(() {
-        _memories = _parseMemories(data);
+        _memories = parsed;
+        _currentPage = 0;
         _isLoading = false;
+        _isFetching = false;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
+      appDebugLog('[Memoryboard] request failed status=${e.statusCode}');
       setState(() {
         _error = e.message;
         _isLoading = false;
+        _isFetching = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _error = 'Something went wrong. Please try again.';
         _isLoading = false;
+        _isFetching = false;
       });
     }
   }
@@ -66,14 +81,50 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
     if (data is List) {
       return data
           .map((item) => Memory.fromJson(item as Map<String, dynamic>))
+          .where((m) => m.status.trim().toLowerCase() == 'approved')
           .toList();
     }
     return [];
   }
 
   Future<void> _handleAddMemory(String filePath, String? description) async {
-    await _api.uploadPhoto(filePath: filePath, description: description);
-    if (mounted) _loadData();
+    final memory = await _api.uploadPhoto(filePath: filePath);
+    if (!mounted) return;
+
+    final status = memory.status.trim().toLowerCase();
+
+    if (status == 'pending') {
+      Navigator.pop(context);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Memory submitted for admin approval.'),
+          backgroundColor: AppColors.ink,
+        ),
+      );
+    } else if (status == 'approved') {
+      Navigator.pop(context);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Memory added successfully.'),
+          backgroundColor: AppColors.ink,
+        ),
+      );
+      _loadData();
+    } else if (status == 'rejected') {
+      throw ApiException(message: 'Memory was rejected.');
+    } else {
+      Navigator.pop(context);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Memory uploaded successfully.'),
+          backgroundColor: AppColors.ink,
+        ),
+      );
+      _loadData();
+    }
   }
 
   @override
@@ -205,6 +256,7 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 60),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
                   'Could not load memories.',
@@ -251,6 +303,7 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
           child: Padding(
             padding: EdgeInsets.symmetric(vertical: 80),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
                   Icons.photo_library_outlined,
@@ -298,13 +351,17 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
             childAspectRatio: 0.72,
           ),
           itemBuilder: (context, index) {
+            final memory = pageMemories[index];
             final rotation = (index % 2 == 0 ? -1.5 : 1.5) * math.pi / 180;
+            final key = memory.id.isNotEmpty
+                ? ValueKey<String>('memory_${memory.id}')
+                : ValueKey<String>(
+                    'memory_${memory.id}_${memory.imageUrl ?? ''}',
+                  );
             return GestureDetector(
-              onTap: () => _showImagePreview(pageMemories[index]),
-              child: _PolaroidCard(
-                memory: pageMemories[index],
-                rotation: rotation,
-              ),
+              key: key,
+              onTap: () => _showImagePreview(memory),
+              child: _PolaroidCard(memory: memory, rotation: rotation),
             );
           },
         ),
@@ -333,6 +390,10 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
 
   void _showImagePreview(Memory memory) {
     if (memory.imageUrl == null || memory.imageUrl!.isEmpty) return;
+
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final previewCacheWidth = (500 * dpr).round().clamp(500, 1600);
+    final previewCacheHeight = (420 * dpr).round().clamp(420, 1600);
 
     showGeneralDialog(
       context: context,
@@ -374,6 +435,8 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
                             child: Image.network(
                               memory.imageUrl!,
                               fit: BoxFit.contain,
+                              cacheWidth: previewCacheWidth,
+                              cacheHeight: previewCacheHeight,
                               loadingBuilder: (_, child, progress) {
                                 if (progress == null) return child;
                                 return const SizedBox(
@@ -505,7 +568,7 @@ class _PolaroidCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(1),
-                      child: _buildPhotoContent(),
+                      child: _buildPhotoContent(context),
                     ),
                   ),
                 ),
@@ -557,13 +620,23 @@ class _PolaroidCard extends StatelessWidget {
     );
   }
 
-  Widget _buildPhotoContent() {
+  Widget _buildPhotoContent(BuildContext context) {
     if (memory.imageUrl != null && memory.imageUrl!.isNotEmpty) {
+      final dpr = MediaQuery.of(context).devicePixelRatio;
+      final cacheWidth = (90 * dpr).round().clamp(90, 360);
+      final cacheHeight = (90 * dpr).round().clamp(90, 360);
       return Image.network(
         memory.imageUrl!,
-        fit: BoxFit.cover,
+        fit: BoxFit.contain,
         width: double.infinity,
         height: double.infinity,
+        cacheWidth: cacheWidth,
+        cacheHeight: cacheHeight,
+        gaplessPlayback: true,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return _buildPlaceholder();
+        },
         errorBuilder: (_, _, _) => _buildPlaceholder(),
       );
     }
