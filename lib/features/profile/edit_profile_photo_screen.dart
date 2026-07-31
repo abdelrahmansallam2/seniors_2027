@@ -10,16 +10,24 @@ import 'package:seniors_27/features/profile/data/profile_api_service.dart';
 
 class EditProfilePhotoScreen extends StatefulWidget {
   final String? currentPhotoUrl;
+  final ProfileApiService? api;
+  final ImagePicker? picker;
 
-  const EditProfilePhotoScreen({super.key, required this.currentPhotoUrl});
+  const EditProfilePhotoScreen({
+    super.key,
+    required this.currentPhotoUrl,
+    this.api,
+    this.picker,
+  });
 
   @override
   State<EditProfilePhotoScreen> createState() => _EditProfilePhotoScreenState();
 }
 
 class _EditProfilePhotoScreenState extends State<EditProfilePhotoScreen> {
-  final ProfileApiService _api = ProfileApiService(ApiClient());
-  final ImagePicker _picker = ImagePicker();
+  late final ProfileApiService _api =
+      widget.api ?? ProfileApiService(ApiClient());
+  late final ImagePicker _picker = widget.picker ?? ImagePicker();
   String? _selectedImagePath;
   bool _saving = false;
   String? _error;
@@ -59,7 +67,7 @@ class _EditProfilePhotoScreenState extends State<EditProfilePhotoScreen> {
     } on ApiException catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Upload failed (${e.statusCode}): ${e.data ?? e.message}';
+          _error = 'Upload failed: ${e.message}';
           _saving = false;
         });
       }
