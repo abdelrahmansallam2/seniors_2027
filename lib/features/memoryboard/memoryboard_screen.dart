@@ -17,19 +17,22 @@ class MemoryboardScreen extends StatefulWidget {
   const MemoryboardScreen({
     this.registerRefresh,
     this.onRefreshSuccess,
+    this.apiService,
     super.key,
   });
 
   final void Function(Future<void> Function({bool force}) refresh)?
   registerRefresh;
   final VoidCallback? onRefreshSuccess;
+  final MemoryboardApiService? apiService;
 
   @override
   State<MemoryboardScreen> createState() => _MemoryboardScreenState();
 }
 
 class _MemoryboardScreenState extends State<MemoryboardScreen> {
-  final _api = MemoryboardApiService(ApiClient());
+  late final MemoryboardApiService _api =
+      widget.apiService ?? MemoryboardApiService(ApiClient());
   int _currentPage = 0;
   static const int _pageSize = 12;
 
@@ -420,10 +423,6 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
   void _showImagePreview(Memory memory) {
     if (memory.imageUrl == null || memory.imageUrl!.isEmpty) return;
 
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final previewCacheWidth = (500 * dpr).round().clamp(500, 1600);
-    final previewCacheHeight = (420 * dpr).round().clamp(420, 1600);
-
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -464,8 +463,6 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
                             child: Image.network(
                               memory.imageUrl!,
                               fit: BoxFit.contain,
-                              cacheWidth: previewCacheWidth,
-                              cacheHeight: previewCacheHeight,
                               loadingBuilder: (_, child, progress) {
                                 if (progress == null) return child;
                                 return const SizedBox(
@@ -651,16 +648,11 @@ class _PolaroidCard extends StatelessWidget {
 
   Widget _buildPhotoContent(BuildContext context) {
     if (memory.imageUrl != null && memory.imageUrl!.isNotEmpty) {
-      final dpr = MediaQuery.of(context).devicePixelRatio;
-      final cacheWidth = (90 * dpr).round().clamp(90, 360);
-      final cacheHeight = (90 * dpr).round().clamp(90, 360);
       return Image.network(
         memory.imageUrl!,
         fit: BoxFit.contain,
         width: double.infinity,
         height: double.infinity,
-        cacheWidth: cacheWidth,
-        cacheHeight: cacheHeight,
         gaplessPlayback: true,
         loadingBuilder: (context, child, progress) {
           if (progress == null) return child;

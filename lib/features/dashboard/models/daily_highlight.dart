@@ -49,7 +49,10 @@ class DailyHighlight {
                 )
                 .toList()
           : [],
-      captionText: json['captionText']?.toString().trim(),
+      captionText:
+          (json['captionText'] ?? json['description'] ?? json['caption'])
+              ?.toString()
+              .trim(),
       captionYPercent: (json['captionYPercent'] as num?)?.toDouble(),
     );
   }

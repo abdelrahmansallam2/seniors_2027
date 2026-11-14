@@ -118,16 +118,29 @@ class TokenStorage {
   }
 
   Future<void> clearToken() async {
-    await _secure.delete(_tokenKey);
+    Object? secureDeleteError;
+    StackTrace? secureDeleteStackTrace;
+    try {
+      await _secure.delete(_tokenKey);
+    } catch (error, stackTrace) {
+      secureDeleteError = error;
+      secureDeleteStackTrace = stackTrace;
+    }
+
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_tokenKey);
     } catch (_) {
       // Best-effort legacy cleanup
     }
+
     _cachedToken = null;
     _cacheInitialized = true;
     _initialReadFuture = null;
+
+    if (secureDeleteError != null) {
+      Error.throwWithStackTrace(secureDeleteError, secureDeleteStackTrace!);
+    }
   }
 
   Future<String?> _migrateLegacyToken() async {

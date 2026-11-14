@@ -10,12 +10,14 @@ class DailyHighlightsBookScreen extends StatefulWidget {
   final List<DailyHighlight> highlights;
   final VoidCallback onDashboardRefresh;
   final int initialIndex;
+  final DailyHighlightsApiService? apiService;
 
   const DailyHighlightsBookScreen({
     super.key,
     required this.highlights,
     required this.onDashboardRefresh,
     this.initialIndex = 0,
+    this.apiService,
   });
 
   @override
@@ -26,15 +28,18 @@ class DailyHighlightsBookScreen extends StatefulWidget {
 class _DailyHighlightsBookScreenState extends State<DailyHighlightsBookScreen> {
   late List<DailyHighlight> _highlights;
   late int _currentIndex;
-  final _api = DailyHighlightsApiService(ApiClient());
+  late final DailyHighlightsApiService _api;
   final Set<String> _reactingIds = {};
   final Set<String> _deletingIds = {};
 
   @override
   void initState() {
     super.initState();
+    _api = widget.apiService ?? DailyHighlightsApiService(ApiClient());
     _highlights = List.from(widget.highlights);
-    _currentIndex = widget.initialIndex;
+    _currentIndex = _highlights.isEmpty
+        ? 0
+        : widget.initialIndex.clamp(0, _highlights.length - 1).toInt();
   }
 
   void _goTo(int index) {
@@ -116,12 +121,12 @@ class _DailyHighlightsBookScreenState extends State<DailyHighlightsBookScreen> {
       await _api.delete(highlight.id);
       if (!mounted) return;
       widget.onDashboardRefresh();
+      if (_highlights.length <= 1) {
+        Navigator.of(context).pop();
+        return;
+      }
       setState(() {
         _highlights.removeAt(index);
-        if (_highlights.isEmpty) {
-          Navigator.pop(context);
-          return;
-        }
         if (_currentIndex >= _highlights.length) {
           _currentIndex = _highlights.length - 1;
         }
@@ -148,6 +153,9 @@ class _DailyHighlightsBookScreenState extends State<DailyHighlightsBookScreen> {
   @override
   Widget build(BuildContext context) {
     final highlights = _highlights;
+    if (highlights.isEmpty) {
+      return _buildEmptyState();
+    }
     final highlight = highlights[_currentIndex];
     final bool isFirst = _currentIndex == 0;
     final bool isLast = _currentIndex == highlights.length - 1;
@@ -172,29 +180,73 @@ class _DailyHighlightsBookScreenState extends State<DailyHighlightsBookScreen> {
                   ),
                 ),
               ),
-              Positioned(
-                top: 12,
-                right: 16,
-                child: GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.white12,
-                      border: Border.all(color: Colors.white24, width: 1.5),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Icon(
-                      Icons.close,
-                      color: Colors.white,
-                      size: 20,
+              _buildCloseButton(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return BackdropFilter(
+      filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.25),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.paper,
+                    border: Border.all(color: AppColors.ink, width: 3),
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: AppColors.ink,
+                        offset: Offset(6, 7),
+                        blurRadius: 0,
+                      ),
+                    ],
+                  ),
+                  child: const Text(
+                    'No highlights yet.',
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.ink,
+                      decoration: TextDecoration.none,
                     ),
                   ),
                 ),
               ),
+              _buildCloseButton(),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCloseButton() {
+    return Positioned(
+      top: 12,
+      right: 16,
+      child: GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white12,
+            border: Border.all(color: Colors.white24, width: 1.5),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Icon(Icons.close, color: Colors.white, size: 20),
         ),
       ),
     );
@@ -441,131 +493,48 @@ class _DailyHighlightsBookScreenState extends State<DailyHighlightsBookScreen> {
   }
 }
 
-class _BookImage extends StatefulWidget {
+class _BookImage extends StatelessWidget {
   final DailyHighlight highlight;
 
   const _BookImage({required this.highlight});
 
   @override
-  State<_BookImage> createState() => _BookImageState();
-}
-
-class _BookImageState extends State<_BookImage> {
-  ui.Size? _imageSize;
-
-  @override
-  void initState() {
-    super.initState();
-    _resolveImage();
-  }
-
-  @override
-  void didUpdateWidget(_BookImage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.highlight.photoUrl != widget.highlight.photoUrl) {
-      _imageSize = null;
-      _resolveImage();
-    }
-  }
-
-  void _resolveImage() {
-    final url = widget.highlight.photoUrl;
-    if (url == null || url.isEmpty) return;
-    final stream = NetworkImage(url).resolve(const ImageConfiguration());
-    stream.addListener(
-      ImageStreamListener((info, _) {
-        if (mounted) {
-          setState(() {
-            _imageSize = ui.Size(
-              info.image.width.toDouble(),
-              info.image.height.toDouble(),
-            );
-          });
-        }
-      }),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final highlight = widget.highlight;
-    return LayoutBuilder(
-      builder: (ctx, constraints) {
-        final container = ui.Size(constraints.maxWidth, constraints.maxHeight);
-
-        return Stack(
-          children: [
-            Center(
-              child: Image.network(
-                highlight.photoUrl ?? '',
-                fit: BoxFit.contain,
-                width: double.infinity,
-                height: double.infinity,
-                errorBuilder: (_, _, _) => const Icon(
-                  Icons.broken_image,
-                  color: Colors.white54,
-                  size: 48,
+    final caption = highlight.captionText?.trim() ?? '';
+    return Stack(
+      children: [
+        Center(
+          child: Image.network(
+            highlight.photoUrl ?? '',
+            fit: BoxFit.contain,
+            width: double.infinity,
+            height: double.infinity,
+            errorBuilder: (_, _, _) =>
+                const Icon(Icons.broken_image, color: Colors.white54, size: 48),
+          ),
+        ),
+        if (caption.isNotEmpty)
+          Positioned(
+            left: 8,
+            right: 8,
+            bottom: 8,
+            child: Container(
+              color: Colors.black54,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Text(
+                caption,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
                 ),
+                textAlign: TextAlign.center,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (highlight.captionText != null &&
-                highlight.captionText!.isNotEmpty &&
-                _imageSize != null)
-              _CaptionOverlay(
-                containerSize: container,
-                imageSize: _imageSize!,
-                captionText: highlight.captionText!,
-                captionYPercent: highlight.captionYPercent ?? 0.5,
-              ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _CaptionOverlay extends StatelessWidget {
-  final ui.Size containerSize;
-  final ui.Size imageSize;
-  final String captionText;
-  final double captionYPercent;
-
-  const _CaptionOverlay({
-    required this.containerSize,
-    required this.imageSize,
-    required this.captionText,
-    required this.captionYPercent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final rect = fittedRect(containerSize, imageSize);
-    const bandHeight = 44.0;
-    final maxTravel = rect.height - bandHeight;
-    final top =
-        rect.top +
-        captionYPercent.clamp(0.0, 1.0) * (maxTravel > 0 ? maxTravel : 0);
-
-    return Positioned(
-      top: top.clamp(rect.top, rect.bottom - bandHeight),
-      left: rect.left,
-      width: rect.width,
-      child: Container(
-        constraints: const BoxConstraints(minHeight: bandHeight),
-        color: Colors.black54,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Text(
-          captionText,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
           ),
-          textAlign: TextAlign.center,
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
+      ],
     );
   }
 }

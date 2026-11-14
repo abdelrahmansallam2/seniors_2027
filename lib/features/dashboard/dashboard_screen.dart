@@ -112,6 +112,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
     final announcementsVersionAtStart = _announcementsVersion;
     try {
+      await Future.wait<void>([
+        _loadAnnouncementsSection(requestId, announcementsVersionAtStart),
+        _loadEventsSection(requestId),
+        _loadHighlightsSection(requestId),
+      ]);
+    } finally {
+      if (mounted && requestId == _dashboardRequestId) {
+        _dashboardRequestInFlight = false;
+      }
+    }
+  }
+
+  Future<void> _loadAnnouncementsSection(
+    int requestId,
+    int announcementsVersionAtStart,
+  ) async {
+    try {
       final announcements = await _api.getAnnouncements();
       if (!mounted || requestId != _dashboardRequestId) return;
       if (announcementsVersionAtStart == _announcementsVersion) {
@@ -135,6 +152,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _loadEventsSection(int requestId) async {
     try {
       final eventsResponse = await _api.getEvents();
       if (!mounted || requestId != _dashboardRequestId) return;
@@ -149,6 +169,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _eventsLoading = false;
       });
     }
+  }
+
+  Future<void> _loadHighlightsSection(int requestId) async {
     try {
       final highlightsResponse = await _highlightsApi.getActive();
       if (!mounted || requestId != _dashboardRequestId) return;
@@ -162,10 +185,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _highlightsError = 'Could not load highlights.';
         _highlightsLoading = false;
       });
-    } finally {
-      if (mounted && requestId == _dashboardRequestId) {
-        _dashboardRequestInFlight = false;
-      }
     }
   }
 
