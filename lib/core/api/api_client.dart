@@ -227,26 +227,46 @@ class ApiClient {
     }
   }
 
-  Future<Response<T>> upload<T>(
+  Future<Response<T>> postMultipart<T>(
     String path, {
-    required String filePath,
-    String fieldName = 'file',
-    Map<String, dynamic>? extraFields,
+    required FormData formData,
+    Map<String, dynamic>? queryParameters,
+    ProgressCallback? onSendProgress,
   }) async {
     try {
-      final formData = FormData.fromMap({
-        fieldName: await MultipartFile.fromFile(filePath),
-        if (extraFields != null) ...extraFields,
-      });
       final options = Options(
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 60),
         sendTimeout: const Duration(seconds: 60),
       );
-      return await _dio.post<T>(path, data: formData, options: options);
+      return await _dio.post<T>(
+        path,
+        data: formData,
+        queryParameters: queryParameters,
+        options: options,
+        onSendProgress: onSendProgress,
+      );
     } on DioException catch (e) {
       throw _handleError(e);
     }
+  }
+
+  Future<Response<T>> upload<T>(
+    String path, {
+    required String filePath,
+    String fieldName = 'file',
+    Map<String, dynamic>? extraFields,
+    ProgressCallback? onSendProgress,
+  }) async {
+    final formData = FormData.fromMap({
+      fieldName: await MultipartFile.fromFile(filePath),
+      ...?extraFields,
+    });
+    return postMultipart<T>(
+      path,
+      formData: formData,
+      onSendProgress: onSendProgress,
+    );
   }
 
   ApiException _handleError(DioException e) {

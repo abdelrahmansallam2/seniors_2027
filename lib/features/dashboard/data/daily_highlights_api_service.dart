@@ -23,10 +23,12 @@ class DailyHighlightsApiService {
     String? captionText,
     double? captionYPercent,
     List<int> mentionUserIds = const [],
+    ProgressCallback? onSendProgress,
   }) async {
-    final formData = FormData.fromMap({
-      'photo': await MultipartFile.fromFile(filePath),
-    });
+    final stopwatch = Stopwatch()..start();
+    final photo = await MultipartFile.fromFile(filePath);
+    final multipartPrepMs = stopwatch.elapsedMilliseconds;
+    final formData = FormData.fromMap({'photo': photo});
 
     final trimmed = captionText?.trim();
     if (trimmed != null && trimmed.isNotEmpty) {
@@ -44,9 +46,42 @@ class DailyHighlightsApiService {
       formData.fields.add(MapEntry('mentionUserIds', userId.toString()));
     }
 
-    final response = await _client.post(
-      ApiConstants.dailyHighlightsUpload,
-      data: formData,
+    int? firstSendMs;
+    int? lastSendMs;
+    final Response response;
+    try {
+      response = await _client.postMultipart(
+        ApiConstants.dailyHighlightsUpload,
+        formData: formData,
+        onSendProgress: (sent, total) {
+          final elapsed = stopwatch.elapsedMilliseconds;
+          firstSendMs ??= elapsed;
+          lastSendMs = elapsed;
+          onSendProgress?.call(sent, total);
+        },
+      );
+    } catch (_) {
+      appDebugLog(
+        '[HighlightUpload] failed fileBytes=${photo.length} '
+        'multipartPrepMs=$multipartPrepMs '
+        'totalMs=${stopwatch.elapsedMilliseconds}',
+      );
+      rethrow;
+    }
+
+    final completedMs = stopwatch.elapsedMilliseconds;
+    final firstSend = firstSendMs;
+    final lastSend = lastSendMs;
+    final transferMs = firstSend == null
+        ? null
+        : (lastSend ?? firstSend) - firstSend;
+    final responseWaitMs = lastSend == null ? null : completedMs - lastSend;
+    appDebugLog(
+      '[HighlightUpload] fileBytes=${photo.length} '
+      'multipartPrepMs=$multipartPrepMs '
+      'transferMs=${transferMs ?? 'unknown'} '
+      'responseWaitMs=${responseWaitMs ?? 'unknown'} '
+      'totalMs=$completedMs',
     );
     return DailyHighlight.fromJson(response.data as Map<String, dynamic>);
   }
