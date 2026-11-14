@@ -12,26 +12,37 @@ import 'package:seniors_27/features/dashboard/models/daily_highlight.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
 
-class AddHighlightSheet extends StatefulWidget {
-  final Future<void> Function({
-    required String filePath,
-    String? captionText,
-    double? captionYPercent,
-    List<int> mentionUserIds,
-  })?
-  onHighlightSubmitted;
+typedef HighlightUploadProgress = void Function(int sent, int total);
 
-  const AddHighlightSheet({super.key, this.onHighlightSubmitted});
-
-  static Future<void> show(
-    BuildContext context, {
+typedef HighlightSubmitCallback =
     Future<void> Function({
       required String filePath,
       String? captionText,
       double? captionYPercent,
       List<int> mentionUserIds,
-    })?
-    onHighlightSubmitted,
+      HighlightUploadProgress? onSendProgress,
+    });
+
+class AddHighlightSheet extends StatefulWidget {
+  final HighlightSubmitCallback? onHighlightSubmitted;
+  @visibleForTesting
+  final DailyHighlightsApiService? apiService;
+  @visibleForTesting
+  final XFile? initialImage;
+  @visibleForTesting
+  final ui.Size? initialImageSize;
+
+  const AddHighlightSheet({
+    super.key,
+    this.onHighlightSubmitted,
+    this.apiService,
+    this.initialImage,
+    this.initialImageSize,
+  });
+
+  static Future<void> show(
+    BuildContext context, {
+    HighlightSubmitCallback? onHighlightSubmitted,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -48,12 +59,15 @@ class AddHighlightSheet extends StatefulWidget {
 
 class _AddHighlightSheetState extends State<AddHighlightSheet> {
   final ImagePicker _picker = ImagePicker();
-  final _api = DailyHighlightsApiService(ApiClient());
+  late final DailyHighlightsApiService _api;
   final ScrollController _scrollController = ScrollController();
 
   XFile? _image;
   ui.Size? _imageSize;
   bool _isSubmitting = false;
+  bool _isProcessing = false;
+  int _sentBytes = 0;
+  int _totalBytes = 0;
 
   String _captionText = '';
   double _captionYPercent = 0.5;
@@ -74,6 +88,9 @@ class _AddHighlightSheetState extends State<AddHighlightSheet> {
   @override
   void initState() {
     super.initState();
+    _api = widget.apiService ?? DailyHighlightsApiService(ApiClient());
+    _image = widget.initialImage;
+    _imageSize = widget.initialImageSize;
     _searchFocus.addListener(_onSearchFocusChanged);
   }
 
@@ -116,25 +133,40 @@ class _AddHighlightSheetState extends State<AddHighlightSheet> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
+      final stopwatch = Stopwatch()..start();
       final XFile? selected = await _picker.pickImage(source: source);
+      final pickedMs = stopwatch.elapsedMilliseconds;
       if (selected != null) {
         _imageSize = null;
         final file = File(selected.path);
         final completer = Completer<ui.Size>();
         final stream = FileImage(file).resolve(const ImageConfiguration());
         stream.addListener(
-          ImageStreamListener((info, _) {
-            if (!completer.isCompleted) {
-              completer.complete(
-                ui.Size(
-                  info.image.width.toDouble(),
-                  info.image.height.toDouble(),
-                ),
-              );
-            }
-          }),
+          ImageStreamListener(
+            (info, _) {
+              if (!completer.isCompleted) {
+                completer.complete(
+                  ui.Size(
+                    info.image.width.toDouble(),
+                    info.image.height.toDouble(),
+                  ),
+                );
+              }
+            },
+            onError: (error, stackTrace) {
+              if (!completer.isCompleted) {
+                completer.completeError(error, stackTrace);
+              }
+            },
+          ),
         );
         final size = await completer.future;
+        if (!mounted) return;
+        appDebugLog(
+          '[HighlightImage] pickMs=$pickedMs '
+          'decodeMs=${stopwatch.elapsedMilliseconds - pickedMs} '
+          'width=${size.width.round()} height=${size.height.round()}',
+        );
         setState(() {
           _image = selected;
           _imageSize = size;
@@ -242,13 +274,24 @@ class _AddHighlightSheetState extends State<AddHighlightSheet> {
     _captionController.text = _captionText;
     setState(() => _isEditingCaption = true);
     Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
       _captionFocus.requestFocus();
     });
   }
 
+  String get _latestCaptionText {
+    final raw = _isEditingCaption ? _captionController.text : _captionText;
+    return raw.trim();
+  }
+
   void _finishCaptionEdit() {
+    final trimmed = _captionController.text.trim();
     setState(() {
-      _captionText = _captionController.text.trim();
+      _captionText = trimmed;
+      _captionController.value = TextEditingValue(
+        text: trimmed,
+        selection: TextSelection.collapsed(offset: trimmed.length),
+      );
       _isEditingCaption = false;
     });
   }
@@ -261,15 +304,57 @@ class _AddHighlightSheetState extends State<AddHighlightSheet> {
     });
   }
 
+  void _handleSendProgress(int sent, int total) {
+    if (!mounted) return;
+    final safeSent = sent < 0 ? 0 : sent;
+    final safeTotal = total < 0 ? 0 : total;
+    final isProcessing = safeTotal > 0 && safeSent >= safeTotal;
+    if (_sentBytes == safeSent &&
+        _totalBytes == safeTotal &&
+        _isProcessing == isProcessing) {
+      return;
+    }
+    setState(() {
+      _sentBytes = safeSent;
+      _totalBytes = safeTotal;
+      _isProcessing = isProcessing;
+    });
+  }
+
   Future<void> _submit() async {
     if (_image == null || _isSubmitting) return;
-    setState(() => _isSubmitting = true);
+    final image = _image!;
+    final caption = _latestCaptionText;
+    final captionYPercent = _captionYPercent;
+    final mentionUserIds = _selectedMentions.map((m) => m.id).toList();
+    if (_captionFocus.hasFocus) {
+      _captionFocus.unfocus();
+    }
+    setState(() {
+      _captionText = caption;
+      _isEditingCaption = false;
+      _isSubmitting = true;
+      _isProcessing = false;
+      _sentBytes = 0;
+      _totalBytes = 0;
+    });
+
+    appDebugLog(
+      '[HighlightSubmit] width=${_imageSize?.width.round() ?? 'unknown'} '
+      'height=${_imageSize?.height.round() ?? 'unknown'}',
+    );
+
+    final stopwatch = Stopwatch()..start();
     try {
       await widget.onHighlightSubmitted?.call(
-        filePath: _image!.path,
-        captionText: _captionText.isNotEmpty ? _captionText : null,
-        captionYPercent: _captionText.isNotEmpty ? _captionYPercent : null,
-        mentionUserIds: _selectedMentions.map((m) => m.id).toList(),
+        filePath: image.path,
+        captionText: caption.isEmpty ? null : caption,
+        captionYPercent: caption.isEmpty ? null : captionYPercent,
+        mentionUserIds: mentionUserIds,
+        onSendProgress: _handleSendProgress,
+      );
+      appDebugLog(
+        '[HighlightSubmit] completed elapsedMs=${stopwatch.elapsedMilliseconds}',
       );
     } catch (e) {
       if (mounted) {
@@ -295,7 +380,14 @@ class _AddHighlightSheetState extends State<AddHighlightSheet> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isSubmitting = false);
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+          _isProcessing = false;
+          _sentBytes = 0;
+          _totalBytes = 0;
+        });
+      }
     }
   }
 
@@ -378,11 +470,17 @@ class _AddHighlightSheetState extends State<AddHighlightSheet> {
         _buildCaptionInfo(),
         const SizedBox(height: 16),
         _buildMentionSection(),
+        if (_isSubmitting) ...[
+          const SizedBox(height: 16),
+          _buildUploadStatus(),
+        ],
         const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
           child: RetroButton(
-            label: _isSubmitting ? 'SUBMITTING...' : 'SUBMIT HIGHLIGHT',
+            label: _isSubmitting
+                ? (_isProcessing ? 'PROCESSING...' : 'UPLOADING...')
+                : 'SUBMIT HIGHLIGHT',
             height: 54,
             backgroundColor: AppColors.pink,
             onPressed: _isSubmitting ? null : _submit,
@@ -393,6 +491,51 @@ class _AddHighlightSheetState extends State<AddHighlightSheet> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildUploadStatus() {
+    final hasTotal = _totalBytes > 0;
+    final progress = hasTotal
+        ? (_sentBytes / _totalBytes).clamp(0.0, 1.0).toDouble()
+        : null;
+    final label = _isProcessing
+        ? 'PROCESSING HIGHLIGHT...'
+        : progress == null
+        ? 'UPLOADING PHOTO...'
+        : 'UPLOADING PHOTO ${(progress * 100).round()}%';
+    return Semantics(
+      label: label,
+      value: progress == null ? null : '${(progress * 100).round()}%',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.cyan,
+          border: Border.all(color: AppColors.ink, width: 1.5),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            LinearProgressIndicator(
+              value: _isProcessing ? null : progress,
+              minHeight: 8,
+              color: AppColors.ink,
+              backgroundColor: AppColors.paper,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -595,6 +738,7 @@ class _AddHighlightSheetState extends State<AddHighlightSheet> {
             ),
           ),
           GestureDetector(
+            key: const ValueKey('highlight-remove-caption'),
             onTap: _removeCaption,
             child: const Icon(Icons.close, size: 16, color: AppColors.muted),
           ),
@@ -723,30 +867,36 @@ class _AddHighlightSheetState extends State<AddHighlightSheet> {
         itemBuilder: (ctx, i) {
           final user = _searchResults[i];
           final selected = _selectedMentions.any((m) => m.id == user.id);
-          return ListTile(
-            dense: true,
-            leading: CircleAvatar(
-              radius: 16,
-              backgroundImage:
-                  user.photoUrl != null && user.photoUrl!.isNotEmpty
-                  ? NetworkImage(user.photoUrl!)
-                  : null,
-              child: user.photoUrl == null || user.photoUrl!.isEmpty
-                  ? const Icon(Icons.person, size: 16)
-                  : null,
+          return Material(
+            type: MaterialType.transparency,
+            child: ListTile(
+              dense: true,
+              leading: CircleAvatar(
+                radius: 16,
+                backgroundImage:
+                    user.photoUrl != null && user.photoUrl!.isNotEmpty
+                    ? NetworkImage(user.photoUrl!)
+                    : null,
+                child: user.photoUrl == null || user.photoUrl!.isEmpty
+                    ? const Icon(Icons.person, size: 16)
+                    : null,
+              ),
+              title: Text(
+                user.username,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              trailing: selected
+                  ? const Icon(
+                      Icons.check_circle,
+                      color: AppColors.green,
+                      size: 20,
+                    )
+                  : const Icon(Icons.add_circle_outline, size: 20),
+              onTap: () => _toggleMention(user),
             ),
-            title: Text(
-              user.username,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-            ),
-            trailing: selected
-                ? const Icon(
-                    Icons.check_circle,
-                    color: AppColors.green,
-                    size: 20,
-                  )
-                : const Icon(Icons.add_circle_outline, size: 20),
-            onTap: () => _toggleMention(user),
           );
         },
       ),

@@ -128,6 +128,29 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('renders the caption returned by the server', (tester) async {
+    final api = _FakeDailyHighlightsApi();
+    final highlight = DailyHighlight.fromJson({
+      'id': 42,
+      'photoUrl': 'https://example.com/highlight.png',
+      'isOwnedByCurrentUser': true,
+      'user': {'username': 'Tester'},
+      'captionText': 'مرحبا 👋\nسطر ثانٍ',
+      'captionYPercent': 0.42,
+    });
+
+    expect(highlight.captionYPercent, 0.42);
+    await _openBook(
+      tester,
+      highlights: [highlight],
+      api: api,
+      onDashboardRefresh: () {},
+    );
+
+    expect(find.text('مرحبا 👋\nسطر ثانٍ'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('closing during deletion does not update disposed state', (
     tester,
   ) async {

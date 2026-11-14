@@ -212,12 +212,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String? captionText,
     double? captionYPercent,
     List<int> mentionUserIds = const [],
+    HighlightUploadProgress? onSendProgress,
   }) async {
     await _highlightsApi.upload(
       filePath: filePath,
       captionText: captionText,
       captionYPercent: captionYPercent,
       mentionUserIds: mentionUserIds,
+      onSendProgress: onSendProgress,
     );
     if (!mounted) return;
     Navigator.pop(context);
@@ -249,6 +251,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadHighlights() async {
+    final stopwatch = Stopwatch()..start();
     setState(() => _highlightsLoading = true);
     try {
       final response = await _highlightsApi.getActive();
@@ -257,8 +260,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _highlights = _parseHighlights(response.data);
         _highlightsLoading = false;
       });
+      appDebugLog(
+        '[HighlightsLoad] elapsedMs=${stopwatch.elapsedMilliseconds} '
+        'count=${_highlights.length}',
+      );
     } catch (_) {
       if (mounted) setState(() => _highlightsLoading = false);
+      appDebugLog(
+        '[HighlightsLoad] failed elapsedMs=${stopwatch.elapsedMilliseconds}',
+      );
     }
   }
 
