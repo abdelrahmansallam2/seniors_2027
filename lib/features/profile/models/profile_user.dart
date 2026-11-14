@@ -25,7 +25,7 @@ class ProfileUser {
 
   factory ProfileUser.fromJson(Map<String, dynamic> json) {
     return ProfileUser(
-      id: (json['id'] as num?)?.toString() ?? json['id'] as String? ?? '',
+      id: json['id']?.toString() ?? '',
       name: json['username'] as String? ?? json['name'] as String? ?? '',
       email: json['email'] as String? ?? '',
       role: json['role'] as String? ?? '',

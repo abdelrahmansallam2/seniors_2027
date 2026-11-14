@@ -9,6 +9,7 @@ import 'package:seniors_27/features/auth/login_gender_screen.dart';
 import 'package:seniors_27/features/auth/login_otp_screen.dart';
 import 'package:seniors_27/features/auth/login_username_screen.dart';
 import 'package:seniors_27/features/app_shell/main_app_shell.dart';
+import 'package:seniors_27/features/notes/notes_open_book_screen.dart';
 import 'package:seniors_27/main.dart';
 import 'package:seniors_27/shared/widgets/app_logo.dart';
 import 'package:seniors_27/shared/widgets/retro_bottom_nav.dart';
@@ -303,10 +304,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('My Profile'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('OPEN BOOK'));
+    final notesBook = find.text('LATEST 4 NOTES');
+    expect(notesBook, findsOneWidget);
+
+    await tester.ensureVisible(notesBook);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('OPEN BOOK'));
-    await tester.pumpAndSettle();
+    await tester.tap(notesBook);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byType(NotesOpenBookScreen), findsOneWidget);
     expect(find.text('Open Book'), findsOneWidget);
 
     await tester.tap(tab('PROFILE'));

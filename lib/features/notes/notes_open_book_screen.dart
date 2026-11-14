@@ -3,11 +3,13 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/core/api/api_exception.dart';
+import 'package:seniors_27/core/cache/current_user_cache.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/core/utils/app_log.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
 import 'package:seniors_27/features/notes/data/notes_api_service.dart';
 import 'package:seniors_27/features/notes/models/note.dart';
+import 'package:seniors_27/features/profile/models/profile_user.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
 import 'package:seniors_27/shared/widgets/note_card.dart';
 import 'package:seniors_27/shared/widgets/retro_grid_background.dart';
@@ -20,6 +22,7 @@ class NotesOpenBookScreen extends StatefulWidget {
     this.openedFromProfile = false,
     this.userId,
     this.readOnly = false,
+    this.apiService,
     super.key,
   });
 
@@ -27,13 +30,15 @@ class NotesOpenBookScreen extends StatefulWidget {
   final bool openedFromProfile;
   final String? userId;
   final bool readOnly;
+  final NotesApiService? apiService;
 
   @override
   State<NotesOpenBookScreen> createState() => _NotesOpenBookScreenState();
 }
 
 class _NotesOpenBookScreenState extends State<NotesOpenBookScreen> {
-  final _api = NotesApiService(ApiClient());
+  late final NotesApiService _api =
+      widget.apiService ?? NotesApiService(ApiClient());
   List<Note> _notes = [];
   String _currentUserId = '';
   String _authUserId = '';
@@ -59,14 +64,20 @@ class _NotesOpenBookScreenState extends State<NotesOpenBookScreen> {
     try {
       _currentUserId = widget.userId ?? '';
       try {
-        final meRes = await _api.getMe();
-        final meData = meRes.data;
-        if (meData is Map) {
-          _authUserId =
-              (meData['id'] as num?)?.toString() ??
-              meData['id'] as String? ??
-              '';
-        }
+        final me = await CurrentUserCache.get(
+          fetcher: () async {
+            final meRes = await _api.getMe();
+            final meData = meRes.data;
+            if (meData is Map<String, dynamic>) {
+              return ProfileUser.fromJson(meData);
+            }
+            if (meData is Map) {
+              return ProfileUser.fromJson(Map<String, dynamic>.from(meData));
+            }
+            throw const FormatException('unexpected /api/Auth/me payload');
+          },
+        );
+        _authUserId = me.id;
       } catch (_) {}
       if (_authUserId.isEmpty) {
         _authUserId = _currentUserId;

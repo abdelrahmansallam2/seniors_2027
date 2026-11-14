@@ -40,6 +40,7 @@ class ProfileScreen extends StatefulWidget {
     this.readOnly = false,
     this.registerRefresh,
     this.onRefreshSuccess,
+    this.profileApi,
     super.key,
   });
 
@@ -49,13 +50,14 @@ class ProfileScreen extends StatefulWidget {
   final void Function(Future<void> Function({bool force}) refresh)?
   registerRefresh;
   final VoidCallback? onRefreshSuccess;
+  final ProfileApiService? profileApi;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final ProfileApiService _profileApi = ProfileApiService(ApiClient());
+  late final ProfileApiService _profileApi;
   final ProfileGalleryApiService _galleryApi = ProfileGalleryApiService(
     ApiClient(),
   );
@@ -79,6 +81,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _profileApi = widget.profileApi ?? ProfileApiService(ApiClient());
     widget.registerRefresh?.call(refresh);
     _notifyRefreshSuccess = widget.onRefreshSuccess;
     _loadProfile();
@@ -381,7 +384,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       MaterialPageRoute(
         builder: (_) => SocialLinksScreen(
           initialLinks: _socialLinks,
-          onSaved: _loadProfile,
+          onSaved: () => _loadProfile(forceRefresh: true),
         ),
       ),
     );
@@ -395,7 +398,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (result == true && mounted) {
-      _loadProfile();
+      _loadProfile(forceRefresh: true);
     }
   }
 

@@ -22,6 +22,16 @@ class _MapSecureStorage implements SecureStorage {
   }
 }
 
+class _FailingDeleteSecureStorage extends _MapSecureStorage {
+  int deleteCount = 0;
+
+  @override
+  Future<void> delete(String key) async {
+    deleteCount++;
+    throw StateError('secure delete failed');
+  }
+}
+
 void main() {
   late SharedPreferences prefs;
 
@@ -82,6 +92,26 @@ void main() {
       final result = await storage.readToken();
       expect(result, 'secure-value');
     });
+
+    test(
+      'clearToken cleans memory and legacy when secure delete fails',
+      () async {
+        final failing = _FailingDeleteSecureStorage();
+        final failingStorage = TokenStorage(secure: failing);
+        await failing.write(_tokenKey, 'secure-value');
+        await prefs.setString(_tokenKey, 'legacy-value');
+
+        await expectLater(
+          failingStorage.clearToken(),
+          throwsA(isA<StateError>()),
+        );
+
+        expect(failing.deleteCount, 1);
+        expect(prefs.getString(_tokenKey), isNull);
+        expect(await failingStorage.readToken(), isNull);
+        expect(failing._store[_tokenKey], 'secure-value');
+      },
+    );
   });
 
   group('TokenStorage legacy migration', () {
