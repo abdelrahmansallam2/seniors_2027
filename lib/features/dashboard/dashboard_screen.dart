@@ -29,12 +29,17 @@ class DashboardScreen extends StatefulWidget {
     required this.onOpenNotes,
     this.apiService,
     this.highlightsApiService,
+    this.registerRefresh,
+    this.onRefreshSuccess,
     super.key,
   });
 
   final VoidCallback onOpenNotes;
   final DashboardApiService? apiService;
   final DailyHighlightsApiService? highlightsApiService;
+  final void Function(Future<void> Function({bool force}) refresh)?
+  registerRefresh;
+  final VoidCallback? onRefreshSuccess;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -61,11 +66,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime? _lastSuccessfulLoad;
   int _dashboardRequestId = 0;
   int _announcementsVersion = 0;
+  VoidCallback? _notifyRefreshSuccess;
 
   @override
   void initState() {
     super.initState();
+    widget.registerRefresh?.call(refresh);
+    _notifyRefreshSuccess = widget.onRefreshSuccess;
     _loadData(trigger: 'initial');
+  }
+
+  Future<void> refresh({bool force = true}) {
+    return _loadData(forceRefresh: force, trigger: 'refresh');
   }
 
   Future<void> _loadData({
@@ -100,6 +112,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
     final announcementsVersionAtStart = _announcementsVersion;
     try {
+      await Future.wait<void>([
+        _loadAnnouncementsSection(requestId, announcementsVersionAtStart),
+        _loadEventsSection(requestId),
+        _loadHighlightsSection(requestId),
+      ]);
+    } finally {
+      if (mounted && requestId == _dashboardRequestId) {
+        _dashboardRequestInFlight = false;
+      }
+    }
+  }
+
+  Future<void> _loadAnnouncementsSection(
+    int requestId,
+    int announcementsVersionAtStart,
+  ) async {
+    try {
       final announcements = await _api.getAnnouncements();
       if (!mounted || requestId != _dashboardRequestId) return;
       if (announcementsVersionAtStart == _announcementsVersion) {
@@ -108,6 +137,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _isLoading = false;
           _lastSuccessfulLoad = DateTime.now();
         });
+        _notifyRefreshSuccess?.call();
       }
     } on ApiException catch (e) {
       if (!mounted || requestId != _dashboardRequestId) return;
@@ -122,6 +152,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _loadEventsSection(int requestId) async {
     try {
       final eventsResponse = await _api.getEvents();
       if (!mounted || requestId != _dashboardRequestId) return;
@@ -136,6 +169,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _eventsLoading = false;
       });
     }
+  }
+
+  Future<void> _loadHighlightsSection(int requestId) async {
     try {
       final highlightsResponse = await _highlightsApi.getActive();
       if (!mounted || requestId != _dashboardRequestId) return;
@@ -149,10 +185,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _highlightsError = 'Could not load highlights.';
         _highlightsLoading = false;
       });
-    } finally {
-      if (mounted && requestId == _dashboardRequestId) {
-        _dashboardRequestInFlight = false;
-      }
     }
   }
 
@@ -255,53 +287,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      key: const PageStorageKey('dashboard_scroll'),
-      padding: const EdgeInsets.fromLTRB(22, 30, 22, 110),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 430),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  MainPageHeader(
-                    title: 'Dashboard',
-                    subtitle: 'Your senior portal home.',
-                  ),
-                  Positioned(
-                    top: 2,
-                    right: 4,
-                    child: RetroSticker(
-                      color: AppColors.yellow,
-                      width: 58,
-                      height: 20,
-                      angle: 0.12,
+    return RefreshIndicator(
+      onRefresh: refresh,
+      child: SingleChildScrollView(
+        key: const PageStorageKey('dashboard_scroll'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(22, 30, 22, 110),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    MainPageHeader(
+                      title: 'Dashboard',
+                      subtitle: 'Your senior portal home.',
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 28),
-              const _DashboardHeroCard(),
-              const SizedBox(height: 26),
-              _DailyHighlightsSection(
-                highlights: _highlights,
-                isLoading: _highlightsLoading,
-                error: _highlightsError,
-                onAddToday: () => AddHighlightSheet.show(
-                  context,
-                  onHighlightSubmitted: _handleAddHighlight,
+                    Positioned(
+                      top: 2,
+                      right: 4,
+                      child: RetroSticker(
+                        color: AppColors.yellow,
+                        width: 58,
+                        height: 20,
+                        angle: 0.12,
+                      ),
+                    ),
+                  ],
                 ),
-                onOpenBook: (index) => _openHighlightsBook(initialIndex: index),
-                onRetry: () => _loadData(forceRefresh: true, trigger: 'retry'),
-              ),
-              const SizedBox(height: 26),
-              _buildAnnouncementsSection(),
-              const SizedBox(height: 26),
-              _buildUpcomingEventsSection(),
-            ],
+                const SizedBox(height: 28),
+                const _DashboardHeroCard(),
+                const SizedBox(height: 26),
+                _DailyHighlightsSection(
+                  highlights: _highlights,
+                  isLoading: _highlightsLoading,
+                  error: _highlightsError,
+                  onAddToday: () => AddHighlightSheet.show(
+                    context,
+                    onHighlightSubmitted: _handleAddHighlight,
+                  ),
+                  onOpenBook: (index) =>
+                      _openHighlightsBook(initialIndex: index),
+                  onRetry: () =>
+                      _loadData(forceRefresh: true, trigger: 'retry'),
+                ),
+                const SizedBox(height: 26),
+                _buildAnnouncementsSection(),
+                const SizedBox(height: 26),
+                _buildUpcomingEventsSection(),
+              ],
+            ),
           ),
         ),
       ),

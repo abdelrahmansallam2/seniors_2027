@@ -50,12 +50,18 @@ class SessionManager {
   }
 
   Future<void> _endSession() async {
+    var tokenCleared = false;
     try {
       await _tokenStorage.clearToken();
+      tokenCleared = true;
     } catch (_) {
-      // Best-effort token clear; continue with the rest of the cleanup.
+      appDebugLog('[Session] token clear failed; secure token may remain');
     }
-    appDebugLog('[Session] token cleared');
+    appDebugLog(
+      tokenCleared
+          ? '[Session] token cleared'
+          : '[Session] token clear incomplete',
+    );
     try {
       await CurrentUserCache.clear();
     } catch (_) {

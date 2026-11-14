@@ -26,6 +26,14 @@ class _MapSecureStorage implements SecureStorage {
   }
 }
 
+class _FailingDeleteSecureStorage extends _MapSecureStorage {
+  @override
+  Future<void> delete(String key) async {
+    deleteCount++;
+    throw StateError('secure delete failed');
+  }
+}
+
 class _LoginPushCounter extends NavigatorObserver {
   int loginPushes = 0;
 
@@ -189,6 +197,28 @@ void main() {
       expect(CurrentUserCache.peek(), isNull);
       expect(counter.loginPushes, 1);
       expect(find.byType(LoginEmailScreen), findsOneWidget);
+    });
+
+    testWidgets('secure delete failure still clears identity and navigates', (
+      tester,
+    ) async {
+      secure = _FailingDeleteSecureStorage();
+      tokenStorage = TokenStorage(secure: secure);
+      sessionManager = SessionManager(tokenStorage: tokenStorage);
+      await seedSession();
+
+      final counter = _LoginPushCounter();
+      await pumpHostApp(tester, observers: [counter]);
+
+      await sessionManager.handleUnauthorized();
+      await tester.pumpAndSettle();
+
+      expect(secure.deleteCount, 1);
+      expect(await tokenStorage.readToken(), isNull);
+      expect(CurrentUserCache.peek(), isNull);
+      expect(counter.loginPushes, 1);
+      expect(find.byType(LoginEmailScreen), findsOneWidget);
+      expect(secure._store['auth_token'], 'session-token');
     });
   });
 }

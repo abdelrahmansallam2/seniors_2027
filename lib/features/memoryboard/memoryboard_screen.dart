@@ -14,14 +14,25 @@ import 'package:seniors_27/shared/widgets/retro_button.dart';
 import 'package:seniors_27/shared/widgets/retro_sticker.dart';
 
 class MemoryboardScreen extends StatefulWidget {
-  const MemoryboardScreen({super.key});
+  const MemoryboardScreen({
+    this.registerRefresh,
+    this.onRefreshSuccess,
+    this.apiService,
+    super.key,
+  });
+
+  final void Function(Future<void> Function({bool force}) refresh)?
+  registerRefresh;
+  final VoidCallback? onRefreshSuccess;
+  final MemoryboardApiService? apiService;
 
   @override
   State<MemoryboardScreen> createState() => _MemoryboardScreenState();
 }
 
 class _MemoryboardScreenState extends State<MemoryboardScreen> {
-  final _api = MemoryboardApiService(ApiClient());
+  late final MemoryboardApiService _api =
+      widget.apiService ?? MemoryboardApiService(ApiClient());
   int _currentPage = 0;
   static const int _pageSize = 12;
 
@@ -29,21 +40,30 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
   bool _isLoading = true;
   bool _isFetching = false;
   String? _error;
+  VoidCallback? _notifyRefreshSuccess;
 
   @override
   void initState() {
     super.initState();
+    widget.registerRefresh?.call(refresh);
+    _notifyRefreshSuccess = widget.onRefreshSuccess;
     _loadData();
   }
 
-  Future<void> _loadData() async {
+  Future<void> refresh({bool force = true}) {
+    return _loadData(forceRefresh: force);
+  }
+
+  Future<void> _loadData({bool forceRefresh = false}) async {
     if (_isFetching) {
       appDebugLog('[Memoryboard] request blocked because already loading');
       return;
     }
     _isFetching = true;
     setState(() {
-      _isLoading = true;
+      if (!forceRefresh || _memories.isEmpty) {
+        _isLoading = true;
+      }
       _error = null;
     });
     appDebugLog('[Memoryboard] request started');
@@ -53,24 +73,32 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
       if (!mounted) return;
       final parsed = _parseMemories(data);
       appDebugLog('[Memoryboard] response count=${parsed.length}');
+      final totalPages = (parsed.length / _pageSize).ceil();
       setState(() {
         _memories = parsed;
-        _currentPage = 0;
+        if (_currentPage >= totalPages) {
+          _currentPage = math.max(0, totalPages - 1);
+        }
         _isLoading = false;
         _isFetching = false;
       });
+      _notifyRefreshSuccess?.call();
     } on ApiException catch (e) {
       if (!mounted) return;
       appDebugLog('[Memoryboard] request failed status=${e.statusCode}');
       setState(() {
-        _error = e.message;
+        if (_memories.isEmpty) {
+          _error = e.message;
+        }
         _isLoading = false;
         _isFetching = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'Something went wrong. Please try again.';
+        if (_memories.isEmpty) {
+          _error = 'Something went wrong. Please try again.';
+        }
         _isLoading = false;
         _isFetching = false;
       });
@@ -134,98 +162,102 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
     final end = (start + _pageSize).clamp(0, _memories.length);
     final pageMemories = _memories.sublist(start, end);
 
-    return SingleChildScrollView(
-      key: const PageStorageKey('memoryboard_scroll'),
-      padding: const EdgeInsets.fromLTRB(22, 30, 22, 140),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Stack(
-            clipBehavior: Clip.none,
-            children: [
-              MainPageHeader(
-                title: 'Memoryboard',
-                subtitle: 'Find your funniest shots and cozy moments.',
-              ),
-              Positioned(
-                top: 2,
-                right: 4,
-                child: RetroSticker(
-                  color: AppColors.magenta,
-                  width: 58,
-                  height: 20,
-                  angle: 0.12,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: 140,
-            child: RetroButton(
-              label: 'ADD MEMORY',
-              height: 38,
-              backgroundColor: AppColors.green,
-              onPressed: () => AddMemorySheet.show(
-                context,
-                onMemorySubmitted: _handleAddMemory,
-              ),
-              textStyle: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          _buildBoard(pageMemories),
-          const SizedBox(height: 28),
-          if (totalPages > 1)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+    return RefreshIndicator(
+      onRefresh: refresh,
+      child: SingleChildScrollView(
+        key: const PageStorageKey('memoryboard_scroll'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(22, 30, 22, 140),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Stack(
+              clipBehavior: Clip.none,
               children: [
-                SizedBox(
-                  width: 85,
-                  child: RetroButton(
-                    label: 'PREV.',
-                    height: 34,
-                    shadowOffset: const Offset(3, 4),
-                    onPressed: _currentPage > 0
-                        ? () => setState(() => _currentPage--)
-                        : null,
-                    textStyle: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
+                MainPageHeader(
+                  title: 'Memoryboard',
+                  subtitle: 'Find your funniest shots and cozy moments.',
                 ),
-                const SizedBox(width: 16),
-                Text(
-                  '${_currentPage + 1} / $totalPages',
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                SizedBox(
-                  width: 85,
-                  child: RetroButton(
-                    label: 'NEXT',
-                    height: 34,
-                    shadowOffset: const Offset(3, 4),
-                    onPressed: _currentPage < totalPages - 1
-                        ? () => setState(() => _currentPage++)
-                        : null,
-                    textStyle: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                    ),
+                Positioned(
+                  top: 2,
+                  right: 4,
+                  child: RetroSticker(
+                    color: AppColors.magenta,
+                    width: 58,
+                    height: 20,
+                    angle: 0.12,
                   ),
                 ),
               ],
             ),
-        ],
+            const SizedBox(height: 20),
+            SizedBox(
+              width: 140,
+              child: RetroButton(
+                label: 'ADD MEMORY',
+                height: 38,
+                backgroundColor: AppColors.green,
+                onPressed: () => AddMemorySheet.show(
+                  context,
+                  onMemorySubmitted: _handleAddMemory,
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            _buildBoard(pageMemories),
+            const SizedBox(height: 28),
+            if (totalPages > 1)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 85,
+                    child: RetroButton(
+                      label: 'PREV.',
+                      height: 34,
+                      shadowOffset: const Offset(3, 4),
+                      onPressed: _currentPage > 0
+                          ? () => setState(() => _currentPage--)
+                          : null,
+                      textStyle: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    '${_currentPage + 1} / $totalPages',
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  SizedBox(
+                    width: 85,
+                    child: RetroButton(
+                      label: 'NEXT',
+                      height: 34,
+                      shadowOffset: const Offset(3, 4),
+                      onPressed: _currentPage < totalPages - 1
+                          ? () => setState(() => _currentPage++)
+                          : null,
+                      textStyle: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -391,10 +423,6 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
   void _showImagePreview(Memory memory) {
     if (memory.imageUrl == null || memory.imageUrl!.isEmpty) return;
 
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final previewCacheWidth = (500 * dpr).round().clamp(500, 1600);
-    final previewCacheHeight = (420 * dpr).round().clamp(420, 1600);
-
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -435,8 +463,6 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
                             child: Image.network(
                               memory.imageUrl!,
                               fit: BoxFit.contain,
-                              cacheWidth: previewCacheWidth,
-                              cacheHeight: previewCacheHeight,
                               loadingBuilder: (_, child, progress) {
                                 if (progress == null) return child;
                                 return const SizedBox(
@@ -622,16 +648,11 @@ class _PolaroidCard extends StatelessWidget {
 
   Widget _buildPhotoContent(BuildContext context) {
     if (memory.imageUrl != null && memory.imageUrl!.isNotEmpty) {
-      final dpr = MediaQuery.of(context).devicePixelRatio;
-      final cacheWidth = (90 * dpr).round().clamp(90, 360);
-      final cacheHeight = (90 * dpr).round().clamp(90, 360);
       return Image.network(
         memory.imageUrl!,
         fit: BoxFit.contain,
         width: double.infinity,
         height: double.infinity,
-        cacheWidth: cacheWidth,
-        cacheHeight: cacheHeight,
         gaplessPlayback: true,
         loadingBuilder: (context, child, progress) {
           if (progress == null) return child;
