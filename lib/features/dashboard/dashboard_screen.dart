@@ -4,6 +4,8 @@ import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/constants/app_assets.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
+import 'package:seniors_27/core/motion/retro_motion.dart';
+import 'package:seniors_27/core/navigation/retro_overlay.dart';
 import 'package:seniors_27/core/utils/app_log.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
 import 'package:seniors_27/features/dashboard/data/daily_highlights_api_service.dart';
@@ -21,6 +23,7 @@ import 'package:seniors_27/features/dashboard/daily_highlights_book_screen.dart'
 import 'package:seniors_27/shared/widgets/app_logo.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
+import 'package:seniors_27/shared/widgets/retro_entrance.dart';
 import 'package:seniors_27/shared/widgets/retro_section_header.dart';
 import 'package:seniors_27/shared/widgets/retro_sticker.dart';
 
@@ -235,18 +238,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _openHighlightsBook({int initialIndex = 0}) {
     if (_highlights.isEmpty) return;
-    showGeneralDialog(
+    showRetroOverlay(
       context: context,
-      barrierDismissible: true,
       barrierLabel: 'Daily Highlights Book',
       barrierColor: Colors.transparent,
-      pageBuilder: (_, _, _) {
-        return DailyHighlightsBookScreen(
-          highlights: _highlights,
-          onDashboardRefresh: _loadHighlights,
-          initialIndex: initialIndex,
-        );
-      },
+      builder: (_) => DailyHighlightsBookScreen(
+        highlights: _highlights,
+        onDashboardRefresh: _loadHighlights,
+        initialIndex: initialIndex,
+      ),
     );
   }
 
@@ -329,25 +329,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
                 ),
                 const SizedBox(height: 28),
-                const _DashboardHeroCard(),
-                const SizedBox(height: 26),
-                _DailyHighlightsSection(
-                  highlights: _highlights,
-                  isLoading: _highlightsLoading,
-                  error: _highlightsError,
-                  onAddToday: () => AddHighlightSheet.show(
-                    context,
-                    onHighlightSubmitted: _handleAddHighlight,
-                  ),
-                  onOpenBook: (index) =>
-                      _openHighlightsBook(initialIndex: index),
-                  onRetry: () =>
-                      _loadData(forceRefresh: true, trigger: 'retry'),
+                const RetroEntrance(
+                  key: ValueKey<String>('dashboard_hero'),
+                  child: _DashboardHeroCard(),
                 ),
                 const SizedBox(height: 26),
-                _buildAnnouncementsSection(),
+                RetroEntrance(
+                  key: ValueKey<String>(
+                    'dashboard_highlights_'
+                    '${_highlightsLoading}_${_highlightsError != null}',
+                  ),
+                  delay: RetroMotion.staggerDelay(1),
+                  child: _DailyHighlightsSection(
+                    highlights: _highlights,
+                    isLoading: _highlightsLoading,
+                    error: _highlightsError,
+                    onAddToday: () => AddHighlightSheet.show(
+                      context,
+                      onHighlightSubmitted: _handleAddHighlight,
+                    ),
+                    onOpenBook: (index) =>
+                        _openHighlightsBook(initialIndex: index),
+                    onRetry: () =>
+                        _loadData(forceRefresh: true, trigger: 'retry'),
+                  ),
+                ),
                 const SizedBox(height: 26),
-                _buildUpcomingEventsSection(),
+                RetroEntrance(
+                  key: ValueKey<String>(
+                    'dashboard_announcements_'
+                    '${_isLoading}_${_error != null}',
+                  ),
+                  delay: RetroMotion.staggerDelay(2),
+                  child: _buildAnnouncementsSection(),
+                ),
+                const SizedBox(height: 26),
+                RetroEntrance(
+                  key: ValueKey<String>(
+                    'dashboard_events_${_eventsLoading}_${_eventsError != null}',
+                  ),
+                  delay: RetroMotion.staggerDelay(3),
+                  child: _buildUpcomingEventsSection(),
+                ),
               ],
             ),
           ),

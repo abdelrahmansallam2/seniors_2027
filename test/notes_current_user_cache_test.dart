@@ -107,4 +107,17 @@ void main() {
 
     expect(secondApi.meCalls, 1);
   });
+
+  testWidgets('refetches an invalid cached identity before requesting notes', (
+    tester,
+  ) async {
+    CurrentUserCache.set(const ProfileUser(id: '', name: 'Missing ID'));
+    final api = _FakeNotesApiService();
+
+    await _pumpNotes(tester, api);
+
+    expect(api.meCalls, 1);
+    expect(api.lastRecipientId, '7');
+    expect(api.notesCalls, 1);
+  });
 }

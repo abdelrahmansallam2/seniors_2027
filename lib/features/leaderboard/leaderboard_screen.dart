@@ -9,6 +9,7 @@ import 'package:seniors_27/features/seniors_directory/data/seniors_api_service.d
 import 'package:seniors_27/features/seniors_directory/models/senior_student.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
+import 'package:seniors_27/shared/widgets/retro_entrance.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({
@@ -212,35 +213,42 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       );
     }
 
-    return RetroCard(
-      padding: EdgeInsets.zero,
-      borderRadius: 4,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Column(
-              children: [
-                SvgPicture.asset(AppAssets.trophyWinner, width: 72, height: 72),
-                const SizedBox(height: 8),
-                const Text(
-                  'TOP SENIORS',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
-                ),
-                const Text(
-                  'CLASS OF 2027',
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 8,
-                    fontWeight: FontWeight.w700,
+    return RetroEntrance(
+      key: const ValueKey<String>('leaderboard_ready'),
+      child: RetroCard(
+        padding: EdgeInsets.zero,
+        borderRadius: 4,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Column(
+                children: [
+                  SvgPicture.asset(
+                    AppAssets.trophyWinner,
+                    width: 72,
+                    height: 72,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  const Text(
+                    'TOP SENIORS',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+                  ),
+                  const Text(
+                    'CLASS OF 2027',
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 8,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          for (var index = 0; index < _rankedSeniors.length; index++)
-            _RankRow(rank: index + 1, senior: _rankedSeniors[index]),
-        ],
+            for (var index = 0; index < _rankedSeniors.length; index++)
+              _RankRow(rank: index + 1, senior: _rankedSeniors[index]),
+          ],
+        ),
       ),
     );
   }

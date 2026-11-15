@@ -10,6 +10,7 @@ import 'package:seniors_27/features/auth/login_otp_screen.dart';
 import 'package:seniors_27/features/auth/login_username_screen.dart';
 import 'package:seniors_27/features/app_shell/main_app_shell.dart';
 import 'package:seniors_27/features/notes/notes_open_book_screen.dart';
+import 'package:seniors_27/features/profile/profile_screen.dart';
 import 'package:seniors_27/main.dart';
 import 'package:seniors_27/shared/widgets/app_logo.dart';
 import 'package:seniors_27/shared/widgets/retro_bottom_nav.dart';
@@ -306,17 +307,28 @@ void main() {
 
     final notesBook = find.text('LATEST 4 NOTES');
     expect(notesBook, findsOneWidget);
+    final profileState = tester.state(find.byType(ProfileScreen));
 
     await tester.ensureVisible(notesBook);
     await tester.pumpAndSettle();
     await tester.tap(notesBook);
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.byType(NotesOpenBookScreen), findsOneWidget);
     expect(find.text('Open Book'), findsOneWidget);
+    expect(
+      tester
+          .widget<Opacity>(
+            find.byKey(const ValueKey<String>('tab_transition_opacity')),
+          )
+          .opacity,
+      inExclusiveRange(0.9, 1),
+    );
 
     await tester.tap(tab('PROFILE'));
     await tester.pumpAndSettle();
     expect(find.text('My Profile'), findsOneWidget);
+    expect(tester.state(find.byType(ProfileScreen)), same(profileState));
   });
 
   testWidgets('retro buttons flash yellow and depress while pressed', (

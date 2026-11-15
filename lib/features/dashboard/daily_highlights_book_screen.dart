@@ -5,6 +5,7 @@ import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/features/dashboard/data/daily_highlights_api_service.dart';
 import 'package:seniors_27/features/dashboard/models/daily_highlight.dart';
+import 'package:seniors_27/shared/widgets/retro_image_reveal.dart';
 
 class DailyHighlightsBookScreen extends StatefulWidget {
   final List<DailyHighlight> highlights;
@@ -504,11 +505,12 @@ class _BookImage extends StatelessWidget {
     return Stack(
       children: [
         Center(
-          child: Image.network(
-            highlight.photoUrl ?? '',
+          child: RetroImageReveal(
+            image: NetworkImage(highlight.photoUrl ?? ''),
             fit: BoxFit.contain,
             width: double.infinity,
             height: double.infinity,
+            placeholder: const SizedBox.expand(),
             errorBuilder: (_, _, _) =>
                 const Icon(Icons.broken_image, color: Colors.white54, size: 48),
           ),

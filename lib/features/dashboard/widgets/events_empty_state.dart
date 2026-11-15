@@ -10,7 +10,7 @@ class EventsEmptyState extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 40),
       decoration: BoxDecoration(
-        color: AppColors.paper.withOpacity(0.5),
+        color: AppColors.paper.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(8),
       ),
       child: CustomPaint(
@@ -52,7 +52,7 @@ class _DashedBorderPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = AppColors.ink.withOpacity(0.3)
+      ..color = AppColors.ink.withValues(alpha: 0.3)
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
 

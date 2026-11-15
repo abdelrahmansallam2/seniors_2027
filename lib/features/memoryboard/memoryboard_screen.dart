@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/constants/app_assets.dart';
+import 'package:seniors_27/core/motion/retro_motion.dart';
+import 'package:seniors_27/core/navigation/retro_overlay.dart';
 import 'package:seniors_27/core/utils/app_log.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
@@ -11,6 +13,8 @@ import 'package:seniors_27/features/memoryboard/data/memoryboard_api_service.dar
 import 'package:seniors_27/features/memoryboard/memory_model.dart';
 import 'package:seniors_27/shared/widgets/add_memory_sheet.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
+import 'package:seniors_27/shared/widgets/retro_entrance.dart';
+import 'package:seniors_27/shared/widgets/retro_image_reveal.dart';
 import 'package:seniors_27/shared/widgets/retro_sticker.dart';
 
 class MemoryboardScreen extends StatefulWidget {
@@ -385,15 +389,17 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
           itemBuilder: (context, index) {
             final memory = pageMemories[index];
             final rotation = (index % 2 == 0 ? -1.5 : 1.5) * math.pi / 180;
-            final key = memory.id.isNotEmpty
-                ? ValueKey<String>('memory_${memory.id}')
-                : ValueKey<String>(
-                    'memory_${memory.id}_${memory.imageUrl ?? ''}',
-                  );
-            return GestureDetector(
-              key: key,
-              onTap: () => _showImagePreview(memory),
-              child: _PolaroidCard(memory: memory, rotation: rotation),
+            final identity = memory.id.isNotEmpty
+                ? memory.id
+                : '${memory.id}_${memory.imageUrl ?? ''}';
+            return RetroEntrance(
+              key: ValueKey<String>('memory_entrance_$identity'),
+              delay: RetroMotion.staggerDelay(index),
+              child: GestureDetector(
+                key: ValueKey<String>('memory_$identity'),
+                onTap: () => _showImagePreview(memory),
+                child: _PolaroidCard(memory: memory, rotation: rotation),
+              ),
             );
           },
         ),
@@ -423,13 +429,11 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
   void _showImagePreview(Memory memory) {
     if (memory.imageUrl == null || memory.imageUrl!.isEmpty) return;
 
-    showGeneralDialog(
+    showRetroOverlay(
       context: context,
-      barrierDismissible: true,
       barrierLabel: 'Close',
       barrierColor: Colors.black54,
-      transitionDuration: const Duration(milliseconds: 200),
-      pageBuilder: (_, _, _) => BackdropFilter(
+      builder: (_) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: GestureDetector(
           onTap: () => Navigator.pop(context),
@@ -460,23 +464,23 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(maxHeight: 420),
-                            child: Image.network(
-                              memory.imageUrl!,
+                            child: RetroImageReveal(
+                              image: NetworkImage(memory.imageUrl!),
                               fit: BoxFit.contain,
-                              loadingBuilder: (_, child, progress) {
-                                if (progress == null) return child;
-                                return const SizedBox(
-                                  height: 200,
-                                  child: Center(
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 3,
-                                      color: AppColors.ink,
-                                    ),
+                              width: double.infinity,
+                              placeholder: const SizedBox(
+                                height: 200,
+                                width: double.infinity,
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 3,
+                                    color: AppColors.ink,
                                   ),
-                                );
-                              },
+                                ),
+                              ),
                               errorBuilder: (_, _, _) => Container(
                                 height: 200,
+                                width: double.infinity,
                                 alignment: Alignment.center,
                                 child: const Text(
                                   'Failed to load image.',
@@ -648,16 +652,13 @@ class _PolaroidCard extends StatelessWidget {
 
   Widget _buildPhotoContent(BuildContext context) {
     if (memory.imageUrl != null && memory.imageUrl!.isNotEmpty) {
-      return Image.network(
-        memory.imageUrl!,
+      return RetroImageReveal(
+        image: NetworkImage(memory.imageUrl!),
         fit: BoxFit.contain,
         width: double.infinity,
         height: double.infinity,
         gaplessPlayback: true,
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return _buildPlaceholder();
-        },
+        placeholder: _buildPlaceholder(),
         errorBuilder: (_, _, _) => _buildPlaceholder(),
       );
     }
