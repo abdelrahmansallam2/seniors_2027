@@ -245,7 +245,7 @@ class _StatBox extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
+        color: color.withValues(alpha: 0.2),
         border: Border.all(color: AppColors.ink, width: 2),
         borderRadius: BorderRadius.circular(8),
       ),

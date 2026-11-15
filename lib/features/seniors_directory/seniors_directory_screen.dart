@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
+import 'package:seniors_27/core/motion/retro_motion.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
 import 'package:seniors_27/features/seniors_directory/data/seniors_api_service.dart';
 import 'package:seniors_27/features/seniors_directory/models/senior_student.dart';
 import 'package:seniors_27/features/seniors_directory/widgets/senior_card.dart';
 import 'package:seniors_27/features/seniors_directory/widgets/seniors_search_bar.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
+import 'package:seniors_27/shared/widgets/retro_entrance.dart';
 import 'package:seniors_27/shared/widgets/retro_grid_background.dart';
 import 'package:seniors_27/shared/widgets/retro_sticker.dart';
 
@@ -340,7 +342,12 @@ class _SeniorsDirectoryScreenState extends State<SeniorsDirectoryScreen> {
             childAspectRatio: 0.65,
           ),
           itemBuilder: (context, index) {
-            return SeniorCard(senior: _allSeniors[index]);
+            final senior = _allSeniors[index];
+            return RetroEntrance(
+              key: ValueKey<String>('senior_entrance_${senior.id}'),
+              delay: RetroMotion.staggerDelay(index),
+              child: SeniorCard(senior: senior),
+            );
           },
         ),
         const SizedBox(height: 32),

@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
+import 'package:seniors_27/core/navigation/retro_page_route.dart';
 import 'package:seniors_27/features/profile/data/profile_api_service.dart';
 
 class EditProfilePhotoScreen extends StatefulWidget {
@@ -41,7 +42,7 @@ class _EditProfilePhotoScreenState extends State<EditProfilePhotoScreen> {
       if (!mounted) return;
 
       final croppedPath = await Navigator.of(context).push<String>(
-        MaterialPageRoute(builder: (_) => _CropScreen(imageBytes: bytes)),
+        RetroPageRoute(builder: (_) => _CropScreen(imageBytes: bytes)),
       );
 
       if (croppedPath != null && mounted) {

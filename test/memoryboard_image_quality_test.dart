@@ -58,6 +58,7 @@ void main() {
       expect(image.image, isA<NetworkImage>());
       expect(image.image, isNot(isA<ResizeImage>()));
       expect((image.image as NetworkImage).url, _originalUrl);
+      expect(image.filterQuality, FilterQuality.medium);
     }
 
     final card = find.byKey(const ValueKey<String>('memory_1'));
@@ -72,6 +73,7 @@ void main() {
       expect(image.image, isA<NetworkImage>());
       expect(image.image, isNot(isA<ResizeImage>()));
       expect((image.image as NetworkImage).url, _originalUrl);
+      expect(image.filterQuality, FilterQuality.medium);
     }
   });
 }

@@ -6,6 +6,9 @@ import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/auth/session_manager.dart';
 import 'package:seniors_27/core/cache/current_user_cache.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
+import 'package:seniors_27/core/motion/retro_motion.dart';
+import 'package:seniors_27/core/navigation/retro_overlay.dart';
+import 'package:seniors_27/core/navigation/retro_page_route.dart';
 import 'package:seniors_27/core/utils/app_log.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
 import 'package:seniors_27/features/notes/data/notes_api_service.dart';
@@ -25,6 +28,8 @@ import 'package:seniors_27/features/profile/edit_profile_photo_screen.dart';
 import 'package:seniors_27/features/profile/social_links_screen.dart';
 import 'package:seniors_27/shared/widgets/note_card.dart';
 import 'package:seniors_27/shared/widgets/retro_card.dart';
+import 'package:seniors_27/shared/widgets/retro_entrance.dart';
+import 'package:seniors_27/shared/widgets/retro_image_reveal.dart';
 import 'package:seniors_27/shared/widgets/retro_section_header.dart';
 import 'package:seniors_27/shared/widgets/retro_grid_background.dart';
 import 'package:seniors_27/shared/widgets/retro_sticker.dart';
@@ -381,7 +386,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _openSocialLinksScreen() async {
     await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
+      RetroPageRoute(
         builder: (_) => SocialLinksScreen(
           initialLinks: _socialLinks,
           onSaved: () => _loadProfile(forceRefresh: true),
@@ -392,7 +397,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _openFavoriteSongEditor() async {
     final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
+      RetroPageRoute(
         builder: (_) =>
             FavoriteSongScreen(initialEmbedUrl: _user.favoriteSongEmbedUrl),
       ),
@@ -404,9 +409,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _openNameEditor() async {
     final result = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder: (_) => EditNameScreen(currentName: _user.name),
-      ),
+      RetroPageRoute(builder: (_) => EditNameScreen(currentName: _user.name)),
     );
     if (result != null && mounted) {
       setState(() {
@@ -428,7 +431,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _openDescriptionEditor() async {
     final result = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
+      RetroPageRoute(
         builder: (_) =>
             EditDescriptionScreen(currentDescription: _user.description),
       ),
@@ -455,7 +458,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final oldUrl = _user.photoUrl;
 
     final result = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
+      RetroPageRoute(
         builder: (_) => EditProfilePhotoScreen(currentPhotoUrl: oldUrl),
       ),
     );
@@ -629,19 +632,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
             const SizedBox(height: 20),
-            _buildTopSection(user),
+            RetroEntrance(
+              key: const ValueKey<String>('profile_top'),
+              delay: RetroMotion.staggerDelay(1),
+              child: _buildTopSection(user),
+            ),
             const SizedBox(height: 20),
-            _buildSocialAndSpotify(),
+            RetroEntrance(
+              key: const ValueKey<String>('profile_social'),
+              delay: RetroMotion.staggerDelay(2),
+              child: _buildSocialAndSpotify(),
+            ),
             const SizedBox(height: 20),
-            if (widget.readOnly)
-              _buildCompactNotes()
-            else
-              GestureDetector(
-                onTap: widget.onOpenNotes,
-                child: _buildLatestNotes(),
-              ),
+            RetroEntrance(
+              key: const ValueKey<String>('profile_notes'),
+              delay: RetroMotion.staggerDelay(3),
+              child: widget.readOnly
+                  ? _buildCompactNotes()
+                  : GestureDetector(
+                      onTap: widget.onOpenNotes,
+                      child: _buildLatestNotes(),
+                    ),
+            ),
             const SizedBox(height: 20),
-            _buildGallerySection(),
+            RetroEntrance(
+              key: const ValueKey<String>('profile_gallery'),
+              delay: RetroMotion.staggerDelay(4),
+              child: _buildGallerySection(),
+            ),
             if (!widget.readOnly) ...[
               const SizedBox(height: 28),
               _buildLogoutButton(),
@@ -1376,7 +1394,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (visitedUserId == null) return;
     Navigator.of(context)
         .push<bool>(
-          MaterialPageRoute(
+          RetroPageRoute(
             builder: (context) => Scaffold(
               backgroundColor: AppColors.background,
               body: RetroGridBackground(
@@ -1403,7 +1421,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     Navigator.of(context)
         .push<bool>(
-          MaterialPageRoute(
+          RetroPageRoute(
             builder: (_) => SendNoteScreen(
               recipientId: visitedId,
               recipientName: _user.name,
@@ -1577,12 +1595,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }) {
     if (photos.isEmpty) return;
 
-    showGeneralDialog(
+    showRetroOverlay(
       context: context,
-      barrierDismissible: true,
       barrierLabel: 'Gallery viewer',
       barrierColor: Colors.transparent,
-      pageBuilder: (_, _, _) {
+      builder: (_) {
         return _GalleryViewerSheet(photos: photos, initialIndex: initialIndex);
       },
     );
@@ -1654,9 +1671,10 @@ class _GalleryViewerSheetState extends State<_GalleryViewerSheet> {
                     Center(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 48),
-                        child: Image.network(
-                          photo.photoUrl ?? '',
+                        child: RetroImageReveal(
+                          image: NetworkImage(photo.photoUrl ?? ''),
                           fit: BoxFit.contain,
+                          placeholder: const _PhotoPlaceholder(),
                           errorBuilder: (_, _, _) => const _PhotoPlaceholder(),
                         ),
                       ),
