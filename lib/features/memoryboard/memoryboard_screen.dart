@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -10,10 +11,11 @@ import 'package:seniors_27/core/utils/app_log.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
 import 'package:seniors_27/features/app_shell/widgets/main_page_header.dart';
 import 'package:seniors_27/features/memoryboard/data/memoryboard_api_service.dart';
+import 'package:seniors_27/features/memoryboard/data/memoryboard_image_cache.dart';
 import 'package:seniors_27/features/memoryboard/memory_model.dart';
+import 'package:seniors_27/features/memoryboard/widgets/memoryboard_collage.dart';
 import 'package:seniors_27/shared/widgets/add_memory_sheet.dart';
 import 'package:seniors_27/shared/widgets/retro_button.dart';
-import 'package:seniors_27/shared/widgets/retro_entrance.dart';
 import 'package:seniors_27/shared/widgets/retro_image_reveal.dart';
 import 'package:seniors_27/shared/widgets/retro_sticker.dart';
 
@@ -22,6 +24,7 @@ class MemoryboardScreen extends StatefulWidget {
     this.registerRefresh,
     this.onRefreshSuccess,
     this.apiService,
+    this.imageCache,
     super.key,
   });
 
@@ -29,6 +32,7 @@ class MemoryboardScreen extends StatefulWidget {
   registerRefresh;
   final VoidCallback? onRefreshSuccess;
   final MemoryboardApiService? apiService;
+  final MemoryboardImageCache? imageCache;
 
   @override
   State<MemoryboardScreen> createState() => _MemoryboardScreenState();
@@ -38,7 +42,11 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
   late final MemoryboardApiService _api =
       widget.apiService ?? MemoryboardApiService(ApiClient());
   int _currentPage = 0;
+  int _settledPage = 0;
   static const int _pageSize = 12;
+  final PageController _pageController = PageController(keepPage: false);
+  late final MemoryboardImageCache _images =
+      widget.imageCache ?? MemoryboardImageCache();
 
   List<Memory> _memories = [];
   bool _isLoading = true;
@@ -58,6 +66,35 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
     return _loadData(forceRefresh: force);
   }
 
+  @override
+  void dispose() {
+    _images.cancelPrefetch();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _prefetchNextBoard(int page) {
+    if (!mounted || page != _settledPage) return;
+    final start = (page + 1) * _pageSize;
+    if (start >= _memories.length) return;
+    final end = math.min(start + _pageSize, _memories.length);
+    unawaited(_images.prefetch(_memories.sublist(start, end)));
+  }
+
+  void _goToPage(int page) {
+    final totalPages = (_memories.length / _pageSize).ceil();
+    if (!_pageController.hasClients || page < 0 || page >= totalPages) return;
+    if (RetroMotion.reduceMotion(context)) {
+      _pageController.jumpToPage(page);
+    } else {
+      _pageController.animateToPage(
+        page,
+        duration: RetroMotion.pageForward,
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
   Future<void> _loadData({bool forceRefresh = false}) async {
     if (_isFetching) {
       appDebugLog('[Memoryboard] request blocked because already loading');
@@ -71,11 +108,15 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
       _error = null;
     });
     appDebugLog('[Memoryboard] request started');
+    final watch = Stopwatch()..start();
     try {
       final response = await _api.getPhotos();
       final data = response.data;
       if (!mounted) return;
       final parsed = _parseMemories(data);
+      memoryboardTiming(
+        'photoList count=${parsed.length} elapsedMs=${watch.elapsedMilliseconds}',
+      );
       appDebugLog('[Memoryboard] response count=${parsed.length}');
       final totalPages = (parsed.length / _pageSize).ceil();
       setState(() {
@@ -83,8 +124,15 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
         if (_currentPage >= totalPages) {
           _currentPage = math.max(0, totalPages - 1);
         }
+        _settledPage = _currentPage;
         _isLoading = false;
         _isFetching = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_pageController.hasClients) return;
+        if ((_pageController.page ?? 0).round() != _currentPage) {
+          _pageController.jumpToPage(_currentPage);
+        }
       });
       _notifyRefreshSuccess?.call();
     } on ApiException catch (e) {
@@ -162,9 +210,6 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
   @override
   Widget build(BuildContext context) {
     final totalPages = (_memories.length / _pageSize).ceil();
-    final start = _currentPage * _pageSize;
-    final end = (start + _pageSize).clamp(0, _memories.length);
-    final pageMemories = _memories.sublist(start, end);
 
     return RefreshIndicator(
       onRefresh: refresh,
@@ -212,7 +257,7 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            _buildBoard(pageMemories),
+            _buildBoard(),
             const SizedBox(height: 28),
             if (totalPages > 1)
               Row(
@@ -225,7 +270,7 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
                       height: 34,
                       shadowOffset: const Offset(3, 4),
                       onPressed: _currentPage > 0
-                          ? () => setState(() => _currentPage--)
+                          ? () => _goToPage(_currentPage - 1)
                           : null,
                       textStyle: const TextStyle(
                         fontSize: 10,
@@ -250,7 +295,7 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
                       height: 34,
                       shadowOffset: const Offset(3, 4),
                       onPressed: _currentPage < totalPages - 1
-                          ? () => setState(() => _currentPage++)
+                          ? () => _goToPage(_currentPage + 1)
                           : null,
                       textStyle: const TextStyle(
                         fontSize: 10,
@@ -266,7 +311,7 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
     );
   }
 
-  Widget _buildBoard(List<Memory> pageMemories) {
+  Widget _buildBoard() {
     if (_isLoading) {
       return _buildBoardContainer(
         child: const Center(
@@ -374,34 +419,39 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
     }
 
     return _buildBoardContainer(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 24),
-        child: GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: pageMemories.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 14,
-            childAspectRatio: 0.72,
-          ),
-          itemBuilder: (context, index) {
-            final memory = pageMemories[index];
-            final rotation = (index % 2 == 0 ? -1.5 : 1.5) * math.pi / 180;
-            final identity = memory.id.isNotEmpty
-                ? memory.id
-                : '${memory.id}_${memory.imageUrl ?? ''}';
-            return RetroEntrance(
-              key: ValueKey<String>('memory_entrance_$identity'),
-              delay: RetroMotion.staggerDelay(index),
-              child: GestureDetector(
-                key: ValueKey<String>('memory_$identity'),
-                onTap: () => _showImagePreview(memory),
-                child: _PolaroidCard(memory: memory, rotation: rotation),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(19),
+        child: LayoutBuilder(
+          builder: (context, constraints) => SizedBox(
+            height: MemoryboardCollage.heightForWidth(constraints.maxWidth),
+            child: NotificationListener<ScrollEndNotification>(
+              onNotification: (notification) {
+                if (notification.depth == 0 && _settledPage != _currentPage) {
+                  _images.cancelPrefetch();
+                  setState(() => _settledPage = _currentPage);
+                }
+                return false;
+              },
+              child: PageView.builder(
+                key: const ValueKey('memoryboard_pages'),
+                controller: _pageController,
+                itemCount: (_memories.length / _pageSize).ceil(),
+                onPageChanged: (page) => setState(() => _currentPage = page),
+                itemBuilder: (context, page) {
+                  final start = page * _pageSize;
+                  final end = math.min(start + _pageSize, _memories.length);
+                  return MemoryboardCollage(
+                    key: ValueKey('memoryboard_page_$page'),
+                    memories: _memories.sublist(start, end),
+                    isActive: page == _settledPage,
+                    onPhotoTap: _showImagePreview,
+                    imageProviderFor: _images.imageFor,
+                    onPhotosReady: () => _prefetchNextBoard(page),
+                  );
+                },
               ),
-            );
-          },
+            ),
+          ),
         ),
       ),
     );
@@ -465,7 +515,7 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(maxHeight: 420),
                             child: RetroImageReveal(
-                              image: NetworkImage(memory.imageUrl!),
+                              image: _images.imageFor(memory)!,
                               fit: BoxFit.contain,
                               width: double.infinity,
                               placeholder: const SizedBox(
@@ -562,124 +612,5 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
         ),
       ),
     );
-  }
-}
-
-class _PolaroidCard extends StatelessWidget {
-  const _PolaroidCard({required this.memory, required this.rotation});
-
-  final Memory memory;
-  final double rotation;
-
-  @override
-  Widget build(BuildContext context) {
-    return Transform.rotate(
-      angle: rotation,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.paper,
-              border: Border.all(color: AppColors.ink, width: 1.2),
-              boxShadow: const [
-                BoxShadow(
-                  color: AppColors.ink,
-                  offset: Offset(3, 3),
-                  blurRadius: 0,
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                const SizedBox(height: 8),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(1),
-                      child: _buildPhotoContent(context),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        memory.name,
-                        style: const TextStyle(
-                          fontSize: 6,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.ink,
-                          height: 1,
-                        ),
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        memory.date,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 5,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.muted,
-                          height: 1,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            top: -3,
-            left: 16,
-            child: Container(
-              width: 20,
-              height: 10,
-              decoration: BoxDecoration(
-                color: AppColors.yellowWarm.withValues(alpha: 0.7),
-                border: Border.all(color: AppColors.ink, width: 0.5),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPhotoContent(BuildContext context) {
-    if (memory.imageUrl != null && memory.imageUrl!.isNotEmpty) {
-      return RetroImageReveal(
-        image: NetworkImage(memory.imageUrl!),
-        fit: BoxFit.contain,
-        width: double.infinity,
-        height: double.infinity,
-        gaplessPlayback: true,
-        placeholder: _buildPlaceholder(),
-        errorBuilder: (_, _, _) => _buildPlaceholder(),
-      );
-    }
-    return _buildPlaceholder();
-  }
-
-  Widget _buildPlaceholder() {
-    return Container(
-      decoration: BoxDecoration(color: _getPastelColor(memory.id)),
-    );
-  }
-
-  Color _getPastelColor(String id) {
-    final colors = [
-      AppColors.cyan,
-      AppColors.green,
-      AppColors.pink,
-      AppColors.yellowWarm,
-      AppColors.paper,
-    ];
-    final index = id.hashCode % colors.length;
-    return colors[index];
   }
 }
