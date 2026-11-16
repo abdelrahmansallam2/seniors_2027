@@ -6,6 +6,11 @@ plugins {
 }
 
 import java.util.Properties
+import java.util.Base64
+
+val seniorsPreview = (project.findProperty("dart-defines") as? String)
+    ?.split(",")
+    ?.any { String(Base64.getDecoder().decode(it), Charsets.UTF_8) == "SENIORS_PREVIEW=true" } == true
 
 android {
     namespace = "com.seniors2027.app"
@@ -23,7 +28,8 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.seniors2027.app"
+        applicationId = if (seniorsPreview) "com.seniors2027.app.preview" else "com.seniors2027.app"
+        manifestPlaceholders["appLabel"] = if (seniorsPreview) "Seniors 2027 Preview" else "Seniors 2027"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

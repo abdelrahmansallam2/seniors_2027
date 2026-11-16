@@ -1,11 +1,26 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/features/memoryboard/data/memoryboard_api_service.dart';
+import 'package:seniors_27/features/memoryboard/data/memoryboard_image_cache.dart';
 import 'package:seniors_27/features/memoryboard/memoryboard_screen.dart';
 
 const _originalUrl = 'https://example.com/original-memory.jpg';
+
+class _UnavailableCache extends Fake implements BaseCacheManager {
+  @override
+  Stream<FileResponse> getFileStream(
+    String url, {
+    String? key,
+    Map<String, String>? headers,
+    bool withProgress = false,
+  }) {
+    return Stream.error(StateError('Image unavailable in this test'));
+  }
+}
 
 class _FakeMemoryboardApiService extends MemoryboardApiService {
   _FakeMemoryboardApiService() : super(ApiClient());
@@ -39,7 +54,12 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: MemoryboardScreen(apiService: _FakeMemoryboardApiService()),
+          body: MemoryboardScreen(
+            apiService: _FakeMemoryboardApiService(),
+            imageCache: MemoryboardImageCache(
+              cacheManager: _UnavailableCache(),
+            ),
+          ),
         ),
       ),
     );
@@ -48,16 +68,19 @@ void main() {
     List<Image> networkImages() {
       return tester
           .widgetList<Image>(find.byType(Image))
-          .where((image) => image.image is NetworkImage)
+          .where((image) => image.image is CachedNetworkImageProvider)
           .toList();
     }
 
     final gridImages = networkImages();
     expect(gridImages, isNotEmpty);
     for (final image in gridImages) {
-      expect(image.image, isA<NetworkImage>());
+      expect(image.image, isA<CachedNetworkImageProvider>());
       expect(image.image, isNot(isA<ResizeImage>()));
-      expect((image.image as NetworkImage).url, _originalUrl);
+      final provider = image.image as CachedNetworkImageProvider;
+      expect(provider.url, _originalUrl);
+      expect(provider.maxWidth, isNull);
+      expect(provider.maxHeight, isNull);
       expect(image.filterQuality, FilterQuality.medium);
     }
 
@@ -70,9 +93,12 @@ void main() {
     final allImages = networkImages();
     expect(allImages.length, greaterThan(gridImages.length));
     for (final image in allImages) {
-      expect(image.image, isA<NetworkImage>());
+      expect(image.image, isA<CachedNetworkImageProvider>());
       expect(image.image, isNot(isA<ResizeImage>()));
-      expect((image.image as NetworkImage).url, _originalUrl);
+      final provider = image.image as CachedNetworkImageProvider;
+      expect(provider.url, _originalUrl);
+      expect(provider.maxWidth, isNull);
+      expect(provider.maxHeight, isNull);
       expect(image.filterQuality, FilterQuality.medium);
     }
   });
