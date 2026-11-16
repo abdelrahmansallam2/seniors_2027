@@ -20,7 +20,8 @@ Output: `build/preview/seniors2027-memoryboard-preview.apk`.
 - Normal builds, without the opt-in `--dart-define=SENIORS_PREVIEW=true`, keep the
   original application ID and launcher name.
 
-The memoryboard supports horizontal page swipes as well as PREV./NEXT. Photos
+The memoryboard uses horizontal page swipes only, with a centered page counter
+and no PREV./NEXT buttons. Photos
 keep their original image providers, fall in as their first decoded frame is
 ready, and use stable scattered placements. Reduced-motion settings show ready
 photos without the falling animation.

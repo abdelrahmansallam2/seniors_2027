@@ -136,12 +136,15 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('buttons and swipes share the same page controller', (
+  testWidgets('paging is swipe-only and the page counter follows each board', (
     tester,
   ) async {
     await _openBoard(tester, _PagedMemoryboardApiService());
-    await tester.ensureVisible(find.text('NEXT'));
-    await tester.tap(find.text('NEXT'));
+    expect(find.text('NEXT'), findsNothing);
+    expect(find.text('PREV.'), findsNothing);
+    expect(find.text('ADD MEMORY'), findsOneWidget);
+    final pages = find.byKey(const ValueKey('memoryboard_pages'));
+    await tester.drag(pages, const Offset(-300, 0));
     await tester.pumpAndSettle();
     expect(find.text('2 / 3'), findsOneWidget);
 
@@ -152,8 +155,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('3 / 3'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('PREV.'));
-    await tester.tap(find.text('PREV.'));
+    await tester.drag(pages, const Offset(300, 0));
     await tester.pumpAndSettle();
     expect(find.text('2 / 3'), findsOneWidget);
   });
@@ -209,7 +211,7 @@ void main() {
     await refresh(force: true);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('memory_1')), findsOneWidget);
-    expect(find.text('NEXT'), findsNothing);
+    expect(find.text('1 / 1'), findsNothing);
     expect(tester.widget<PageView>(pages).controller!.page, 0);
     expect(tester.takeException(), isNull);
   });
@@ -228,7 +230,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('reduced-motion buttons switch pages without a transition', (
+  testWidgets('swipe-only paging remains usable with reduced motion', (
     tester,
   ) async {
     await _openBoard(
@@ -236,11 +238,14 @@ void main() {
       _PagedMemoryboardApiService(count: 13),
       reduceMotion: true,
     );
-    await tester.ensureVisible(find.text('NEXT'));
-    await tester.tap(find.text('NEXT'));
-    await tester.pump();
-    expect(find.text('2 / 2'), findsOneWidget);
+    expect(find.text('NEXT'), findsNothing);
+    expect(find.text('PREV.'), findsNothing);
+    await tester.drag(
+      find.byKey(const ValueKey('memoryboard_pages')),
+      const Offset(-300, 0),
+    );
     await tester.pumpAndSettle();
+    expect(find.text('2 / 2'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

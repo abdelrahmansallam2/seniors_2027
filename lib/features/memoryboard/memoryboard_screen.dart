@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:seniors_27/core/api/api_client.dart';
 import 'package:seniors_27/core/api/api_exception.dart';
 import 'package:seniors_27/core/constants/app_assets.dart';
-import 'package:seniors_27/core/motion/retro_motion.dart';
 import 'package:seniors_27/core/navigation/retro_overlay.dart';
 import 'package:seniors_27/core/utils/app_log.dart';
 import 'package:seniors_27/core/constants/app_colors.dart';
@@ -79,20 +78,6 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
     if (start >= _memories.length) return;
     final end = math.min(start + _pageSize, _memories.length);
     unawaited(_images.prefetch(_memories.sublist(start, end)));
-  }
-
-  void _goToPage(int page) {
-    final totalPages = (_memories.length / _pageSize).ceil();
-    if (!_pageController.hasClients || page < 0 || page >= totalPages) return;
-    if (RetroMotion.reduceMotion(context)) {
-      _pageController.jumpToPage(page);
-    } else {
-      _pageController.animateToPage(
-        page,
-        duration: RetroMotion.pageForward,
-        curve: Curves.easeOutCubic,
-      );
-    }
   }
 
   Future<void> _loadData({bool forceRefresh = false}) async {
@@ -260,50 +245,15 @@ class _MemoryboardScreenState extends State<MemoryboardScreen> {
             _buildBoard(),
             const SizedBox(height: 28),
             if (totalPages > 1)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 85,
-                    child: RetroButton(
-                      label: 'PREV.',
-                      height: 34,
-                      shadowOffset: const Offset(3, 4),
-                      onPressed: _currentPage > 0
-                          ? () => _goToPage(_currentPage - 1)
-                          : null,
-                      textStyle: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
+              Center(
+                child: Text(
+                  '${_currentPage + 1} / $totalPages',
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
                   ),
-                  const SizedBox(width: 16),
-                  Text(
-                    '${_currentPage + 1} / $totalPages',
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  SizedBox(
-                    width: 85,
-                    child: RetroButton(
-                      label: 'NEXT',
-                      height: 34,
-                      shadowOffset: const Offset(3, 4),
-                      onPressed: _currentPage < totalPages - 1
-                          ? () => _goToPage(_currentPage + 1)
-                          : null,
-                      textStyle: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
           ],
         ),
