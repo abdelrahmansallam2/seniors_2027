@@ -25,6 +25,15 @@ void main() {
     expect(find.text('MEMORIES'), findsNothing);
     expect(find.text('LOGIN'), findsNothing);
 
+    await tester.runAsync(
+      () => precacheImage(
+        const AssetImage('assets/images/app_logo.png'),
+        tester.element(find.byType(AppLogo)),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
     await tester.pump(const Duration(milliseconds: 1500));
     await tester.pumpAndSettle();
     await tester.runAsync(
